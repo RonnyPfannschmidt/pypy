@@ -1,9 +1,6 @@
 import pytest
 
-try:
-    import rply
-except ImportError:
-    pytest.skip("rply not installed")
+pytest.importorskip("rply")
 
 from rpython.jit.metainterp.ruleopt.parse import *
 

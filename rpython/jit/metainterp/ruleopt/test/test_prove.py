@@ -1,11 +1,8 @@
 from __future__ import print_function
 
 import pytest
-try:
-    import rply
-    import z3
-except ImportError:
-    pytest.skip('rply or z3 not installed')
+pytest.importorskip("rply")
+pytest.importorskip("z3")
 
 from rpython.rlib.rarithmetic import LONG_BIT, r_uint, intmask, ovfcheck, uint_mul_high
 

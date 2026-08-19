@@ -7,8 +7,8 @@ from rpython.translator.platform import host
 from rpython.translator.tool.cbuild import ExternalCompilationInfo
 
 import py, sys, platform
-if sys.platform != 'win32':
-    pytest.skip("Windows only")
+pytestmark = pytest.mark.skipif(sys.platform != 'win32',
+                                reason="Windows only")
 
 
 def get_manifest(executable, allow_missing=False):

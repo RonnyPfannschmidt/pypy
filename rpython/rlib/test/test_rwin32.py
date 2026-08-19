@@ -2,8 +2,8 @@
 from __future__ import print_function
 
 import os, py
-if os.name != 'nt':
-    py.test.skip('tests for win32 only')
+pytestmark = py.test.mark.skipif(os.name != 'nt',
+                                 reason='tests for win32 only')
 
 from rpython.rlib import rwin32
 from rpython.tool.udir import udir

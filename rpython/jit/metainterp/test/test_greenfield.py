@@ -2,7 +2,7 @@ import pytest
 from rpython.jit.metainterp.test.support import LLJitMixin
 from rpython.rlib.jit import JitDriver, assert_green
 
-pytest.skip("this feature is disabled at the moment!")
+pytestmark = pytest.mark.skip(reason="this feature is disabled at the moment!")
 
 # note why it is disabled: before d721da4573ad
 # there was a failing assert when inlining python -> sre -> python:

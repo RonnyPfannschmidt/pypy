@@ -40,11 +40,11 @@ from rpython.jit.metainterp.optimizeopt.intutils import MININT, MAXINT
 from rpython.jit.metainterp.history import new_ref_dict
 from rpython.rtyper.lltypesystem import lltype
 
-try:
-    import z3
-    from hypothesis import given, strategies
-except ImportError:
-    pytest.skip("please install z3 (z3-solver on pypi) and hypothesis")
+# z3 is z3-solver on pypi
+pytest.importorskip("z3")
+pytest.importorskip("hypothesis")
+import z3
+from hypothesis import given, strategies
 
 TRUEBV = z3.BitVecVal(1, LONG_BIT)
 FALSEBV = z3.BitVecVal(0, LONG_BIT)

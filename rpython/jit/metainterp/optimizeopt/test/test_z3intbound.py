@@ -29,11 +29,11 @@ from rpython.jit.metainterp.optimizeopt.test.test_intbound import knownbits_and_
 
 from rpython.jit.metainterp.optimizeopt.test.test_z3checktests import z3_pymod, z3_pydiv
 
-try:
-    import z3
-    from hypothesis import given, strategies, assume, example
-except ImportError:
-    pytest.skip("please install z3 (z3-solver on pypi) and hypothesis")
+# z3 is z3-solver on pypi
+pytest.importorskip("z3")
+pytest.importorskip("hypothesis")
+import z3
+from hypothesis import given, strategies, assume, example
 
 def BitVecVal(value):
     return z3.BitVecVal(value, LONG_BIT)
