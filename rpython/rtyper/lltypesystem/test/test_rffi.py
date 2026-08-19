@@ -411,9 +411,9 @@ class BaseTestRffi:
         f1 = self.compile(f, [])
         assert f1() == chr(42)
 
-    def test_generate_return_char_tests(self):
-        yield self.return_char, False
-        yield self.return_char, True
+    @py.test.mark.parametrize('signed', [False, True])
+    def test_generate_return_char_tests(self, signed):
+        self.return_char(signed)
 
     def test_prebuilt_constant(self):
         py.test.skip("Think how to do it sane")
