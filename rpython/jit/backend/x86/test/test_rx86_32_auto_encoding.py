@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import sys, os, random, struct
 import py
 from rpython.jit.backend.x86 import rx86
@@ -24,9 +26,9 @@ class CodeCheckerMixin(object):
             if (char == self.accept_unnecessary_prefix
                 and self.index == self.instrindex):
                 return    # ignore the extra character '\x40'
-            print self.op
-            print "\x09from rx86.py:", hexdump(self.expected[self.instrindex:self.index] + char)+"..."
-            print "\x09from 'as':   ", hexdump(self.expected[self.instrindex:self.index+15])+"..."
+            print(self.op)
+            print("\x09from rx86.py:", hexdump(self.expected[self.instrindex:self.index] + char)+"...")
+            print("\x09from 'as':   ", hexdump(self.expected[self.instrindex:self.index+15])+"...")
             raise Exception("Differs")
         self.index += 1
 
@@ -149,11 +151,13 @@ class TestRx86_32(object):
     def assembler_operand_stack_sp(self, position):
         return '%d(%s)' % (position, self.REGNAMES[4])
 
-    def assembler_operand_memory(self, (reg1, offset)):
+    def assembler_operand_memory(self, args):
+        reg1, offset = args
         if not offset: offset = ''
         return '%s(%s)' % (offset, self.REGNAMES[reg1])
 
-    def assembler_operand_array(self, (reg1, reg2, scaleshift, offset)):
+    def assembler_operand_array(self, args):
+        reg1, reg2, scaleshift, offset = args
         if not offset: offset = ''
         return '%s(%s,%s,%d)' % (offset, self.REGNAMES[reg1],
                                  self.REGNAMES[reg2], 1<<scaleshift)
@@ -365,7 +369,7 @@ class TestRx86_32(object):
 
         if self.should_skip_instruction(instrname, argmodes) or \
            self.should_skip_instruction_bit32(instrname, argmodes):
-            print "Skipping %s" % methname
+            print("Skipping %s" % methname)
             return
 
         # XXX: ugly way to deal with the differences between 32 and 64 bit
@@ -413,7 +417,7 @@ class TestRx86_32(object):
                 realargmodes.append(mode)
             argmodes = realargmodes
 
-        print "Testing %s with argmodes=%r" % (instrname, argmodes)
+        print("Testing %s with argmodes=%r" % (instrname, argmodes))
         self.methname = methname
         self.is_xmm_insn = getattr(getattr(self.X86_CodeBuilder,
                                            methname), 'is_xmm_insn', False)
@@ -436,6 +440,6 @@ class TestRx86_32(object):
         if not data.startswith('GNU assembler'):
             py.test.skip("full tests require the GNU 'as' assembler")
 
-    def test_all(self):
-        for name in rx86.all_instructions:
-            yield self.complete_test, name
+    @py.test.mark.parametrize('name', rx86.all_instructions)
+    def test_all(self, name):
+        self.complete_test(name)

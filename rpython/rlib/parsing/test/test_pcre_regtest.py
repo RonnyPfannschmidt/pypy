@@ -6,6 +6,8 @@ testoutput1, but that was PCRE matching, which was inconsistent with
 our matching on strings like "[ab]{1,3}(ab*|b)" against 'aabbbb'.
 """
 
+from __future__ import print_function
+
 pcre_license = """
 # The PCRE library is distributed under the BSD license. We have borrowed some
 # of the regression tests (the ones that fit under the DFA scope) in order to
@@ -214,7 +216,7 @@ def create_pcre_pickle(file, dumper):
                 test = unescape(test)
             except Exception:
                 disqualify_test = True
-                print "Warning: could not unescape %r" % test
+                print("Warning: could not unescape %r" % test)
                 
 
             # Third line in the OUTPUT is the result, either:
@@ -239,7 +241,7 @@ def create_pcre_pickle(file, dumper):
                             break
                     break
                 elif not match:
-                    print " *** %r ***" % match
+                    print(" *** %r ***" % match)
                     raise Exception("Lost sync in output.")
             if not disqualify_test:
                 tests.append((test,match))
@@ -267,13 +269,13 @@ def run_individual_test(regex, tests):
         #print "  SKIPPED (Cant do blank regex)"
         return
     
-    print "%s:" % regex_to_use
+    print("%s:" % regex_to_use)
     
     runner = make_runner(regex_to_use)
     
     # Now run the test expressions against the Regex
     for test, match in tests:
-        print "/%r/%r/" % (test, match)
+        print("/%r/%r/" % (test, match))
         
         # Create possible subsequences that we should test
         if anchor_left:
@@ -296,12 +298,13 @@ def run_individual_test(regex, tests):
         else:
             assert match is None
 
-def test_output7():
-    suite = PythonDumper(this_dir.join('pcre_test_7.py').open()).load()
-    while suite:
-        regex, flags, tests = suite.pop(0)
-        yield run_individual_test, regex, tests
+def load_pcre_suite():
+    return PythonDumper(this_dir.join('pcre_test_7.py').open()).load()
+
+@py.test.mark.parametrize('regex,flags,tests', load_pcre_suite())
+def test_output7(regex, flags, tests):
+    run_individual_test(regex, tests)
 
 if __name__=="__main__":
-    for fcn, regex, tests in test_output7():
-        fcn(regex,tests)
+    for regex, flags, tests in load_pcre_suite():
+        run_individual_test(regex, tests)

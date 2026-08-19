@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import py, os
 import pytest
 import time
@@ -38,7 +40,7 @@ class TestExecuteCode(RVMProfTest):
 
     @rvmprof.vmprof_execute_code("xcode1", lambda self, code, num: code)
     def main(self, code, num):
-        print num
+        print(num)
         return 42
 
     def test(self):
@@ -53,7 +55,7 @@ class TestResultClass(RVMProfTest):
     @rvmprof.vmprof_execute_code("xcode2", lambda self, num, code: code,
                                  result_class=A)
     def main(self, num, code):
-        print num
+        print(num)
         return self.A()
 
     def entry_point(self):
@@ -70,7 +72,7 @@ class TestRegisterCode(RVMProfTest):
 
     @rvmprof.vmprof_execute_code("xcode1", lambda self, code, num: code)
     def main(self, code, num):
-        print num
+        print(num)
         return 42
 
     def entry_point(self):
@@ -102,7 +104,7 @@ class RVMProfSamplingTest(RVMProfTest):
     def entry_point(self, value, delta_t, memory=0):
         code = self.MyCode('py:code:52:test_enable')
         rvmprof.register_code(code, self.MyCode.get_name)
-        fd = os.open(self.tmpfilename, os.O_WRONLY | os.O_CREAT, 0666)
+        fd = os.open(self.tmpfilename, os.O_WRONLY | os.O_CREAT, 0o666)
         rvmprof.enable(fd, self.SAMPLING_INTERVAL, memory=memory)
         start = time.time()
         cpu_start = os.times()
@@ -115,7 +117,7 @@ class RVMProfSamplingTest(RVMProfTest):
         cpu_usec = int((cpu_end[0] + cpu_end[1] -
                          cpu_start[0] - cpu_start[1]) * 1000000.0)
         cpu_fd = os.open(self.tmpfilename + '.cpu',
-                          os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0666)
+                          os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o666)
         os.write(cpu_fd, str(cpu_usec))
         os.close(cpu_fd)
         return res

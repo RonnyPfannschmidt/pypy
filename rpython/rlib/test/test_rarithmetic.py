@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 from rpython.rtyper.test.tool import BaseRtypingTest
 from rpython.rtyper.test.test_llinterp import interpret
 from rpython.rlib import rarithmetic
@@ -10,7 +12,7 @@ import py
 maxint_mask = (sys.maxint*2 + 1)
 machbits = 0
 i = 1
-l = 1L
+l = 1
 while i == l and type(i) is int:
     i *= 2
     l *= 2
@@ -52,7 +54,7 @@ class Test_r_int:
         self.unary_test(lambda x: ~x)
     def test__pow__(self):
         self.binary_test(lambda x, y: x**y, (2, 3))
-        self.binary_test(lambda x, y: pow(x, y, 42L), (2, 3, 5, 1000))
+        self.binary_test(lambda x, y: pow(x, y, 42), (2, 3, 5, 1000))
 
     def unary_test(self, f):
         for arg in (-10, -1, 0, 3, 12345):
@@ -420,10 +422,10 @@ def test_int_c_div_mod_2(x, y):
             assert int_c_div(x1, y1) * y1 + int_c_mod(x1, y1) == x1
 
 # these can't be prebuilt on 32bit
-U1 = r_ulonglong(0x0102030405060708L)
-U2 = r_ulonglong(0x0807060504030201L)
-S1 = r_longlong(0x0102030405060708L)
-S2 = r_longlong(0x0807060504030201L)
+U1 = r_ulonglong(0x0102030405060708)
+U2 = r_ulonglong(0x0807060504030201)
+S1 = r_longlong(0x0102030405060708)
+S2 = r_longlong(0x0807060504030201)
 
 def test_byteswap():
     from rpython.rtyper.lltypesystem import rffi, lltype
@@ -612,7 +614,7 @@ class TestStringToInt:
         for x in TESTS:
             for valid_underscore in [False, True]:
                 for no_implicit_octal in [False, True]:
-                    print x, valid_underscore, no_implicit_octal
+                    print(x, valid_underscore, no_implicit_octal)
                     expected_ok = True
                     if no_implicit_octal and any('1' <= c <= '7' for c in x):
                         expected_ok = False

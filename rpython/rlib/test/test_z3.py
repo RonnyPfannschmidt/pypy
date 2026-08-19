@@ -4,11 +4,11 @@ import pytest
 import sys
 import gc
 
-try:
-    import z3
-    from hypothesis import given, strategies, assume, example
-except ImportError:
-    pytest.skip("please install z3 (z3-solver on pypi) and hypothesis")
+# z3 is z3-solver on pypi
+pytest.importorskip("z3")
+pytest.importorskip("hypothesis")
+import z3
+from hypothesis import given, strategies, assume, example
 
 
 from rpython.rlib.rbigint import _bitcount64_ops
