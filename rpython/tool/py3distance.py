@@ -39,6 +39,7 @@ import warnings
 EXCLUDED = (
     'rpython/annotator/test/test_annrpython_py2.py',
     'rpython/flowspace/test/test_objspace_py2.py',
+    'rpython/translator/test/snippet_py2.py',
 )
 
 PY2_STDLIB = (
@@ -70,7 +71,7 @@ CATEGORIES = [
      re.compile(r'(?m)^\s*exec\s+[^\s(]'),
      'exec statement instead of exec function'),
     ('raise_comma',
-     re.compile(r'(?m)^\s*raise\s+[\w.]+\s*,'),
+     re.compile(r'(?m)^[ \t]*raise[ \t]+[\w.]+[ \t]*,'),
      'raise E, v instead of raise E(v)'),
     ('octal_literal',
      # (?<![eE][+-]) so that the tail of a float like 6.5e+04 is not counted
