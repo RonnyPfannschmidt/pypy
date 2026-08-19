@@ -32,9 +32,9 @@ def check_crasher(func_name):
         print(e.out)
         raise
 
-def test_jit_crashers():
-    # Iterate in over sorted test functions, so it's always consistent and
-    # reproducible.
-    for func_name in sorted(jitcrashers.__dict__):
-        if func_name.startswith("jit_"):
-            yield check_crasher, func_name
+# Parametrized over sorted names, so the order is always consistent and
+# reproducible.
+@py.test.mark.parametrize('func_name', sorted(
+    name for name in jitcrashers.__dict__ if name.startswith("jit_")))
+def test_jit_crashers(func_name):
+    check_crasher(func_name)
