@@ -41,7 +41,7 @@ jobs:
     - name: run objspace unit tests
       run: |
         pypy -m pip install -r requirements.txt
-        pypy pytest.py pypy/objspace -v -m "not flaky"
+        pypy -m pytest pypy/objspace -v -m "not flaky"
 
     - name: translate
       run: |

@@ -89,7 +89,7 @@ case "$mode" in
         run bash
         ;;
     pytest)
-        run pypy pytest.py "${paths[@]}"
+        run pypy -m pytest "${paths[@]}"
         ;;
     runner)
         echo "parallel_runs=$jobs" > "$here/machine_cfg.py"

@@ -6,7 +6,7 @@ name: Rpython Unit Tests
 # Note: this action will only run if there are changes to one of:
 #  - rpython folder
 #  - .github folder
-#  - pytest.py
+#  - requirements.txt
 # add more items to `paths` if we missed some!
 
 on:
@@ -14,13 +14,13 @@ on:
     branches: [ "main", "py3.[0-9]+" ]
     paths:
         - "rpython/**/*"
-        - "pytest.py"
+        - "requirements.txt"
         - ".github/**/*"
   pull_request:
     branches: [ "main", "py3.[0-9]+" ]
     paths:
       - "rpython/**/*"
-      - "pytest.py"
+      - "requirements.txt"
       - ".github/**/*"
   workflow_dispatch:
 
@@ -78,7 +78,9 @@ jobs:
         python-version: "pypy2.7-7.3.22"
     - name: Install test dependencies
       if: ${{ !matrix.container }}
-      run: pypy -m pip install hypothesis==4.39.3
+      # the container images already carry these; this is for the
+      # runners that use setup-python instead
+      run: pypy -m pip install hypothesis==4.39.3 pytest==4.6.11 py==1.11.0
     - name: Install macOS dependencies
       if: ${{ startsWith(matrix.runner, 'macos') }}
       run: |
