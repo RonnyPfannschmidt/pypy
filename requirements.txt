@@ -5,6 +5,11 @@ cffi>=1.4.0
 # parse log files in rvmprof tests
 vmprof>=0.4.13
 
+# the test suite.  4.6.11 is the last release supporting Python 2, and the
+# last version of py that works with it.
+pytest==4.6.11
+py==1.11.0
+
 # hypothesis is used for test generation on untranslated tests
 hypothesis<4.40
 enum34>=1.1.2
