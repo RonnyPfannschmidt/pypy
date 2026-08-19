@@ -67,9 +67,15 @@ done
 jobs=${PYPY_TEST_JOBS:-$(nproc 2>/dev/null || echo 4)}
 
 run() {
-    # :z relabels for SELinux; rootless podman maps container root to the
-    # invoking user, so files the tests write stay owned by you.
-    exec "$engine" run --rm -it \
+    # The image's default user is 'buildworker', but a rootless bind mount
+    # shows up owned by container-root, so the tests could not write their
+    # caches.  Running as root inside the container is what GitHub Actions
+    # does too, and rootless podman maps that back to the invoking user, so
+    # anything written stays owned by you.
+    local tty=()
+    [ -t 0 ] && tty=(-it)
+    exec "$engine" run --rm "${tty[@]}" \
+        --user "${PYPY_CI_USER:-0}" \
         -v "$here:/workspace:z" \
         -w /workspace \
         -e PYTHONPATH=. \
