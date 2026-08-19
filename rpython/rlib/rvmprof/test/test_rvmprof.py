@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import py, os
 import pytest
 import time
@@ -38,7 +40,7 @@ class TestExecuteCode(RVMProfTest):
 
     @rvmprof.vmprof_execute_code("xcode1", lambda self, code, num: code)
     def main(self, code, num):
-        print num
+        print(num)
         return 42
 
     def test(self):
@@ -53,7 +55,7 @@ class TestResultClass(RVMProfTest):
     @rvmprof.vmprof_execute_code("xcode2", lambda self, num, code: code,
                                  result_class=A)
     def main(self, num, code):
-        print num
+        print(num)
         return self.A()
 
     def entry_point(self):
@@ -70,7 +72,7 @@ class TestRegisterCode(RVMProfTest):
 
     @rvmprof.vmprof_execute_code("xcode1", lambda self, code, num: code)
     def main(self, code, num):
-        print num
+        print(num)
         return 42
 
     def entry_point(self):
