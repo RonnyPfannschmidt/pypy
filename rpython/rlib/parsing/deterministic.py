@@ -30,7 +30,7 @@ def compress_char_set(chars):
     # Change the above list into a list of sorted tuples
     real_result = [(c,l) for [c,l] in result]
     # Sort longer runs first (hence -c), then alphabetically
-    real_result.sort(key=lambda (l,c): (-c,l))
+    real_result.sort(key=lambda lc: (-lc[1], lc[0]))
     return real_result
 
 def make_nice_charset_repr(chars):
