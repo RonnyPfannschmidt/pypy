@@ -1,10 +1,10 @@
-from _pytest.monkeypatch import monkeypatch
+from _pytest.monkeypatch import MonkeyPatch
 from rpython.tool import ansi_print, ansi_mandelbrot
 
 
 class FakeOutput(object):
     def __init__(self, tty=True):
-        self.monkey = monkeypatch()
+        self.monkey = MonkeyPatch()
         self.tty = tty
         self.output = []
     def __enter__(self, *args):
