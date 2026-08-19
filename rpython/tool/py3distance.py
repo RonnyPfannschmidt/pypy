@@ -73,7 +73,8 @@ CATEGORIES = [
      re.compile(r'(?m)^\s*raise\s+[\w.]+\s*,'),
      'raise E, v instead of raise E(v)'),
     ('octal_literal',
-     re.compile(r'(?<![\w.])0[0-7]+(?![\w.])'),
+     # (?<![eE][+-]) so that the tail of a float like 6.5e+04 is not counted
+     re.compile(r'(?<![\w.])(?<![eE][+-])0[0-7]+(?![\w.])'),
      '0755 instead of 0o755'),
     ('long_literal',
      re.compile(r'(?<![\w.])(?:0[xX][0-9a-fA-F]+|\d+)[lL](?![\w])'),
