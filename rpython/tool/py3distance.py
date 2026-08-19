@@ -71,7 +71,9 @@ CATEGORIES = [
      re.compile(r'(?m)^\s*exec\s+[^\s(]'),
      'exec statement instead of exec function'),
     ('raise_comma',
-     re.compile(r'(?m)^[ \t]*raise[ \t]+[\w.]+[ \t]*,'),
+     # allows a subscript, as in 'raise info[0], info[1], info[2]', but
+     # not a call, so that 'raise Error(a, b)' is not counted
+     re.compile(r'(?m)^[ \t]*raise[ \t]+[\w.]+(?:\[[^]\n]*\])?[ \t]*,'),
      'raise E, v instead of raise E(v)'),
     ('octal_literal',
      # (?<![eE][+-]) so that the tail of a float like 6.5e+04 is not counted
