@@ -255,7 +255,11 @@ def main(argv):
         print()
         for name, was, now in grew:
             print('  REGRESSION %-20s %6d -> %-6d (+%d)'
-                  % (name, was, now, now - was), file=sys.stderr)
+                  % (name, was, now, now - was))
+        print('\nEverything counted here has a spelling that means the same'
+              ' thing on both\nversions, so this can be fixed without'
+              ' forking the source.')
+        sys.stdout.flush()
         return 1
     print('  no category grew (total %d)' % total)
     return 0
