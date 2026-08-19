@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import pytest
 try:
     import rply
@@ -27,7 +29,7 @@ def test_z3_prove(name, rule):
     try:
         p.check_rule(rule)
     except ProofProblem as e:
-        print e.format()
+        print(e.format())
         raise
 
 def test_sorry():
