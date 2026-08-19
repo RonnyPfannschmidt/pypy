@@ -440,6 +440,6 @@ class TestRx86_32(object):
         if not data.startswith('GNU assembler'):
             py.test.skip("full tests require the GNU 'as' assembler")
 
-    def test_all(self):
-        for name in rx86.all_instructions:
-            yield self.complete_test, name
+    @py.test.mark.parametrize('name', rx86.all_instructions)
+    def test_all(self, name):
+        self.complete_test(name)

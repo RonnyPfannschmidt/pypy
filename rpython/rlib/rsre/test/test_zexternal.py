@@ -1,19 +1,21 @@
 from __future__ import print_function
 
 import re
+
+import pytest
+
+from rpython.rlib.rsre.test.re_tests import tests
 from rpython.rlib.rsre.test.test_match import get_code
 from rpython.rlib.rsre.test import support
 
 
-def test_external_match():
-    from rpython.rlib.rsre.test.re_tests import tests
-    for t in tests:
-        yield run_external, t, False
+@pytest.mark.parametrize('t', tests)
+def test_external_match(t):
+    run_external(t, False)
 
-def test_external_search():
-    from rpython.rlib.rsre.test.re_tests import tests
-    for t in tests:
-        yield run_external, t, True
+@pytest.mark.parametrize('t', tests)
+def test_external_search(t):
+    run_external(t, True)
 
 def run_external(t, use_search):
     from rpython.rlib.rsre.test.re_tests import SUCCEED, FAIL, SYNTAX_ERROR

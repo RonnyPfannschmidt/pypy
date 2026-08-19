@@ -298,12 +298,13 @@ def run_individual_test(regex, tests):
         else:
             assert match is None
 
-def test_output7():
-    suite = PythonDumper(this_dir.join('pcre_test_7.py').open()).load()
-    while suite:
-        regex, flags, tests = suite.pop(0)
-        yield run_individual_test, regex, tests
+def load_pcre_suite():
+    return PythonDumper(this_dir.join('pcre_test_7.py').open()).load()
+
+@py.test.mark.parametrize('regex,flags,tests', load_pcre_suite())
+def test_output7(regex, flags, tests):
+    run_individual_test(regex, tests)
 
 if __name__=="__main__":
-    for fcn, regex, tests in test_output7():
-        fcn(regex,tests)
+    for regex, flags, tests in load_pcre_suite():
+        run_individual_test(regex, tests)
