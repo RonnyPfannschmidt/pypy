@@ -83,7 +83,7 @@ run() {
         -e PYTHONPATH=/workspace \
         -e PYPYCHERRYPICK="$cherrypick" \
         "$PYPY_CI_IMAGE" \
-        sh -c 'pypy -m pip install -q --no-cache-dir --target /tmp/cot-assert cot-assert==0.2.0 &&
+        sh -c 'pypy -m pip install -q --no-cache-dir --target /tmp/cot-assert cot-assert==0.2.1 &&
                PYTHONPATH="$PYTHONPATH:/tmp/cot-assert" exec "$@"' sh \
         "$@"
 }
