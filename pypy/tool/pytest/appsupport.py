@@ -102,6 +102,12 @@ class AppFrame(py.code.Frame):
 class AppExceptionInfo(py.code.ExceptionInfo):
     """An ExceptionInfo object representing an app-level exception."""
 
+    def getrepr(self, *args, **kwargs):
+        # pytest 4 also passes truncate_locals, which the py.code.ExceptionInfo
+        # this inherits from predates
+        kwargs.pop('truncate_locals', None)
+        return super(AppExceptionInfo, self).getrepr(*args, **kwargs)
+
     def __init__(self, space, operr):
         self.space = space
         self.operr = operr

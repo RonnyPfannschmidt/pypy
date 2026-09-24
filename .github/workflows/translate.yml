@@ -91,21 +91,17 @@ jobs:
       env:
         CONTAINER: ${{ matrix.container }}
       shell: bash
-      # pypy/conftest.py still relies on --assert=reinterp, which pytest 3.0
-      # removed, so the app-level tests stay on the formerly vendored
-      # versions; the objspace-pytest4 job tracks the port
       run: |
         set -o pipefail
-        INSTALL='pypy -m pip install -r requirements.txt && pypy -m pip install pytest==2.9.2 py==1.4.29'
         if [ -n "$CONTAINER" ]; then
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
             "$CONTAINER" \
-            bash -c "$INSTALL"' && pypy -m pytest pypy/objspace -v -m "not flaky"'
+            bash -c 'pypy -m pip install -r requirements.txt && pypy -m pytest pypy/objspace -v -m "not flaky" --cot-assert'
         else
-          bash -c "$INSTALL"
-          pypy -m pytest pypy/objspace -v -m "not flaky"
+          pypy -m pip install -r requirements.txt
+          pypy -m pytest pypy/objspace -v -m "not flaky" --cot-assert
         fi
 
     - name: translate
