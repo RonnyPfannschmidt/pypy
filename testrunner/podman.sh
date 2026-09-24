@@ -88,7 +88,7 @@ run() {
         "${user[@]}" \
         -v "$here:/workspace:z" \
         -w /workspace \
-        -e PYTHONPATH=. \
+        -e PYTHONPATH=/workspace \
         -e PYPYCHERRYPICK="$cherrypick" \
         "$PYPY_CI_IMAGE" \
         sh -c 'pypy -m pip install -q --no-cache-dir --target /tmp/cot-assert cot-assert==0.2.1 &&
