@@ -5,7 +5,7 @@ from rpython.jit.backend.ppc.detect_feature import detect_vsx
 
 
 py.test.skip("skipping, support for vectorization is not fully maintained "
-             "nowadays and this gives 'Illegal instruction' on ppc110")
+             "nowadays and this gives 'Illegal instruction' on ppc110", allow_module_level=True)
 
 
 class TestBasic(test_basic.JitPPCMixin, test_zvector.VectorizeTests):
