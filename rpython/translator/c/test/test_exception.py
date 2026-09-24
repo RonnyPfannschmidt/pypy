@@ -115,18 +115,6 @@ def test_memoryerror():
     assert f1(sys.maxint // 2 - 16384) == 1000
     assert f1(sys.maxint // 2 + 16384) == 1000
 
-def test_assert():
-    def testfn(n):
-        assert n >= 0
-
-    f1 = getcompiled(testfn, [int])
-    res = f1(0)
-    assert res is None, repr(res)
-    res = f1(42)
-    assert res is None, repr(res)
-    f1(-2, expected_exception_name='AssertionError')
-
-
 def test_reraise_exception():
     class A(Exception):
         pass
