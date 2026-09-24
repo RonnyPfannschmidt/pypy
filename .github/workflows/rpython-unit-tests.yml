@@ -119,7 +119,9 @@ jobs:
         SUITE: ${{ matrix.suite }}
         ARCH: ${{ matrix.arch }}
         CONTAINER: ${{ matrix.container }}
-        PYTHONPATH: .
+        # absolute: runner.py starts pytest from inside rpython/, and plugins
+        # load before any conftest puts the checkout on sys.path
+        PYTHONPATH: ${{ github.workspace }}
         PYPY_LOCALBASE: ${{ matrix.localbase }}
         TEST_TIMEOUT: ${{ matrix.test_timeout || 1759 }}
         PYPY_SIGTERM_DUMP_DIR: ${{ github.workspace }}/sigterm-dumps
@@ -155,7 +157,7 @@ jobs:
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
             -e PYPYCHERRYPICK \
-            -e PYTHONPATH \
+            -e PYTHONPATH=/workspace \
             -e PYPY_SIGTERM_DUMP_DIR=/workspace/sigterm-dumps \
             -e GC_MARKERS=1 \
             "$CONTAINER" \
