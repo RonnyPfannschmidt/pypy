@@ -54,9 +54,45 @@ PY2_BUILTINS = (
     'buffer reload intern'
 ).split()
 
-# (name, compiled regex, description).  Each is matched against the source
-# with comments and string contents blanked out, so occurrences inside
-# docstrings or C source templates are not counted.
+
+def count_bare_tuple_comprehensions(tokens):
+    """Count list comprehensions iterating over an unparenthesized tuple.
+
+    Python 2 accepts '[c for c in "a", "b"]'; Python 3 needs the tuple in
+    parentheses.  Only list comprehensions ever allowed it.
+    """
+    hits = 0
+    # one frame per open bracket: [bracket, seen 'for', inside the iterable]
+    stack = []
+    for ttype, tstr, _, _, _ in tokens:
+        if ttype != tokenize.OP and ttype != tokenize.NAME:
+            continue
+        if tstr in '([{' and ttype == tokenize.OP:
+            stack.append([tstr, False, False])
+            continue
+        if not stack:
+            continue
+        frame = stack[-1]
+        if tstr in ')]}' and ttype == tokenize.OP:
+            stack.pop()
+        elif frame[0] != '[':
+            continue
+        elif tstr == 'for':
+            frame[1], frame[2] = True, False
+        elif tstr == 'in' and frame[1]:
+            frame[2] = True
+        elif tstr == 'if':
+            frame[2] = False
+        elif tstr == ',' and frame[2]:
+            hits += 1
+            frame[1] = frame[2] = False
+    return hits
+
+
+# (name, matcher, description).  A regex is matched against the source with
+# comments dropped and string contents blanked out, so occurrences inside
+# docstrings or C source templates are not counted.  A function gets the
+# token list instead.
 CATEGORIES = [
     ('tuple_params',
      re.compile(r'\bdef\s+\w+\s*\(\s*(?:[^()]*?,\s*)?\('),
@@ -103,20 +139,39 @@ CATEGORIES = [
     ('py2_builtin',
      re.compile(r'(?<![\w.])(?:%s)(?![\w])' % '|'.join(PY2_BUILTINS)),
      'use of a builtin removed in Python 3'),
+    ('ur_prefix',
+     re.compile(r'(?<![\w.])[uU][rR](?=[\'"])'),
+     'ur"..." string prefix, a syntax error on Python 3'),
+    ('bare_tuple_listcomp',
+     count_bare_tuple_comprehensions,
+     '[x for x in a, b] instead of [x for x in (a, b)]'),
 ]
 
 
-def blank_strings_and_comments(source):
+UR_PREFIX = re.compile(r'(?<![\w.])[uU](?=[rR][\'"])')
+
+
+def tokenize_source(source):
+    """Return the token list, or None if the source cannot be tokenized."""
+    # the tokenizer of Python 3.12+ rejects the ur prefix outright; tokenize
+    # it as r instead, leaving the u outside the token so that columns stay
+    # put and blanking keeps it
+    source = UR_PREFIX.sub(' ', source)
+    try:
+        readline = io.StringIO(source).readline
+        return list(tokenize.generate_tokens(readline))
+    except Exception:
+        return None
+
+
+def blank_strings_and_comments(source, tokens):
     """Return source with comments dropped and string contents blanked.
 
     Keeps line and column structure so that line-anchored patterns still
-    work.  Falls back to returning the source unchanged if it cannot be
-    tokenized at all.
+    work, and keeps a string's prefix and quotes so that the prefix can be
+    matched.  Returns the source unchanged if it could not be tokenized.
     """
-    try:
-        readline = io.StringIO(source).readline
-        tokens = list(tokenize.generate_tokens(readline))
-    except Exception:
+    if tokens is None:
         return source
     lines = source.split('\n')
     out = [list(line) for line in lines]
@@ -124,6 +179,13 @@ def blank_strings_and_comments(source):
         if ttype not in (tokenize.STRING, tokenize.COMMENT):
             continue
         (srow, scol), (erow, ecol) = start, end
+        if ttype == tokenize.STRING:
+            # Python 3's tokenizer reads ur"..." as a NAME and a STRING, so
+            # the prefix survives there anyway; keep it on Python 2 too
+            prefix = len(tstr) - len(tstr.lstrip('bBuUrR'))
+            quote = 3 if tstr[prefix:prefix + 3] in ('"""', "'''") else 1
+            scol += prefix + quote
+            ecol -= quote
         for row in range(srow, erow + 1):
             if row - 1 >= len(out):
                 break
@@ -163,9 +225,15 @@ def measure(roots):
     counts['py3_syntax_error'] = [0, 0]
     for path in iter_files(roots):
         source = read(path)
-        code = blank_strings_and_comments(source)
-        for name, pattern, _ in CATEGORIES:
-            n = len(pattern.findall(code))
+        tokens = tokenize_source(source)
+        code = blank_strings_and_comments(source, tokens)
+        for name, matcher, _ in CATEGORIES:
+            if hasattr(matcher, 'findall'):
+                n = len(matcher.findall(code))
+            elif tokens is not None:
+                n = matcher(tokens)
+            else:
+                n = 0
             if n:
                 counts[name][0] += n
                 counts[name][1] += 1
