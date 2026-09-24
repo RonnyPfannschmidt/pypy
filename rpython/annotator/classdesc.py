@@ -739,12 +739,14 @@ class ClassDesc(Desc):
         if self.is_exception_class():
             if self.pyobj.__module__ == 'exceptions':
                 return True
-            # only the py lib's assertion-reinterpreting stand-in (by name:
-            # touching py.code._AssertionError imports the deprecated
-            # compiler package); other AssertionError subclasses are
-            # ordinary classes with their own __init__ and attributes
+            # only the assertion-reinterpreting stand-ins that the py lib and
+            # pytest < 3.0 install as the builtin (by name: touching
+            # py.code._AssertionError imports the deprecated compiler
+            # package); other AssertionError subclasses are ordinary classes
+            # with their own __init__ and attributes
             if (issubclass(self.pyobj, AssertionError) and
-                    self.pyobj.__module__ == 'py._code.assertion'):
+                    self.pyobj.__module__ in ('py._code.assertion',
+                                              '_pytest.assertion.reinterpret')):
                 return True
         return False
 
