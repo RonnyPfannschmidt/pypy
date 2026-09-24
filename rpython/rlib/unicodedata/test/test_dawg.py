@@ -65,9 +65,7 @@ def test_missing_key_inverse():
     with pytest.raises(KeyError):
         _inverse_lookup(packed, 5)
 
-def test_generate():
-    import py
-    tmpdir = py.test.ensuretemp(__name__)
+def test_generate(tmpdir):
     lines = lines = map(hex,map(hash, map(str, range(100))))
     # some extra handcrafted tests
     lines.extend([ 'AAA', 'AAAA', 'AAAB', 'AAB', 'AABB' ])
@@ -106,12 +104,11 @@ START = ord('A')
 STOP = ord('G')
 
 @given(strategies.lists(strategies.text(strategies.characters(min_codepoint=START, max_codepoint=STOP), min_size=1, max_size=10), min_size=5, max_size=50))
-def test_random_dawg(l):
+def test_random_dawg(tmpdir, l):
     l = [s.encode('ascii') for s in l]
     # print l
 
     d = {s: i for i, s in enumerate(l)}
-    tmpdir = pytest.ensuretemp(__name__)
     out = tmpdir.join('%s.py' % hash(str(l)))
     o = out.open('w')
     # print "&~" * 50

@@ -105,11 +105,11 @@ class BaseAst(BaseBox):
     def view(self):
         from rpython.translator.tool.make_dot import DotGen
         from dotviewer import graphclient
-        import pytest
+        from rpython.tool.udir import udir
 
         dotgen = DotGen("G")
         self._dot(dotgen)
-        p = pytest.ensuretemp("pyparser").join("temp.dot")
+        p = udir.join("pyparser.dot")
         p.write(dotgen.generate(target=None))
         graphclient.display_dot_file(str(p))
 
