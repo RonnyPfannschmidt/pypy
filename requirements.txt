@@ -10,6 +10,10 @@ vmprof>=0.4.13
 pytest==4.6.11
 py==1.11.0
 
+# rewrites asserts so that they still pass the flow space, see
+# rpython/pytest.ini
+cot-assert==0.2.1
+
 # hypothesis is used for test generation on untranslated tests
 hypothesis<4.40
 enum34>=1.1.2
