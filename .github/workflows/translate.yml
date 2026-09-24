@@ -165,3 +165,23 @@ jobs:
         path: |
           ./pypy-nightly.tar.gz
           ./pypy-nightly.zip
+
+  objspace-pytest4:
+
+    name: objspace tests on pytest 4.6 (informational)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    container:
+      # latest as of 2026-09-22, pypy-ci 50c29d65 (pypy 8.0.0)
+      image: ghcr.io/pypy/buildworker_x86_64@sha256:c1838412cc6cd01472fd64614dc45b4ba1eea6f21df0a5d0824cdca07cd44a54
+      options: --user 0
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 1
+
+    - name: run objspace unit tests
+      run: |
+        pypy -m pip install -r requirements.txt
+        pypy -m pytest pypy/objspace -v -m "not flaky"
