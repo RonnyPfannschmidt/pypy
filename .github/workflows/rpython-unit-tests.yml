@@ -99,7 +99,9 @@ jobs:
         SUITE: ${{ matrix.suite }}
         ARCH: ${{ matrix.arch }}
         CONTAINER: ${{ matrix.container }}
-        PYTHONPATH: .
+        # absolute: runner.py starts pytest from inside rpython/, and plugins
+        # load before any conftest puts the checkout on sys.path
+        PYTHONPATH: ${{ github.workspace }}
         PYPY_LOCALBASE: ${{ matrix.localbase }}
       shell: bash
       run: |
@@ -133,7 +135,7 @@ jobs:
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
             -e PYPYCHERRYPICK \
-            -e PYTHONPATH \
+            -e PYTHONPATH=/workspace \
             "$CONTAINER" \
             sh -c 'pypy -m pip install -q --no-cache-dir --target /tmp/cot-assert cot-assert==0.2.0 &&
                    PYTHONPATH="$PYTHONPATH:/tmp/cot-assert" exec "$@"' sh \
