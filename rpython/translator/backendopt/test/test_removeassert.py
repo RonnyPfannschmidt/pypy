@@ -98,3 +98,23 @@ def test_with_exception():
     check(fn, [-8], 42, remaining_raise=True)
 
 
+def test_assertion_error_subclass_built_on_the_failure_path():
+    class DetailedAssertion(AssertionError):
+        pass
+    def fail(n):
+        return DetailedAssertion()
+    def fn(n):
+        if not n >= 1:
+            raise fail(n)
+        return n-1
+    t, graph = check(fn, [125], 124)
+    assert 'direct_call' not in summary(graph)
+
+def test_other_exception_built_on_the_failure_path_stays():
+    def fail(n):
+        return ValueError(str(n))
+    def fn(n):
+        if not n >= 1:
+            raise fail(n)
+        return n-1
+    check(fn, [125], 124, remaining_raise=True)
