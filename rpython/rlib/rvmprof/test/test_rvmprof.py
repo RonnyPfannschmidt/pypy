@@ -21,10 +21,16 @@ class RVMProfTest(object):
         def get_name(self):
             return self.name
 
+    # pytest 4 refuses fixtures called directly, so subclasses extend
+    # prepare() rather than overriding the fixture and calling super()
     @pytest.fixture
-    def init(self):
+    def init(self, tmpdir):
+        self.prepare(tmpdir)
         self.register()
         self.rpy_entry_point = compile(self.entry_point, self.ENTRY_POINT_ARGS)
+
+    def prepare(self, tmpdir):
+        pass
 
     def register(self):
         rvmprof.register_code_object_class(self.MyCode,
@@ -93,12 +99,10 @@ class RVMProfSamplingTest(RVMProfTest):
     # https://github.com/vmprof/vmprof-python/issues/163
     SAMPLING_INTERVAL = 1/250.0
 
-    @pytest.fixture
-    def init(self, tmpdir):
+    def prepare(self, tmpdir):
         self.tmpdir = tmpdir
         self.tmpfile = tmpdir.join('profile.vmprof')
         self.tmpfilename = str(self.tmpfile)
-        super(RVMProfSamplingTest, self).init()
 
     ENTRY_POINT_ARGS = (int, float, int)
     def entry_point(self, value, delta_t, memory=0):
@@ -165,8 +169,7 @@ class TestEnable(RVMProfSamplingTest):
 
 class TestNative(RVMProfSamplingTest):
 
-    @pytest.fixture
-    def init(self, tmpdir):
+    def prepare(self, tmpdir):
         eci = ExternalCompilationInfo(compile_extra=['-g','-O0', '-Werror'],
                 post_include_bits = ['int native_func(int);'],
                 separate_module_sources=["""
@@ -184,7 +187,7 @@ class TestNative(RVMProfSamplingTest):
                 """])
         self.native_func = rffi.llexternal("native_func", [rffi.INT], rffi.INT,
                                            compilation_info=eci)
-        super(TestNative, self).init(tmpdir)
+        super(TestNative, self).prepare(tmpdir)
 
     @rvmprof.vmprof_execute_code("xcode1", lambda self, code, count: code)
     def main(self, code, count):
