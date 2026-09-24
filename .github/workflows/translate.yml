@@ -41,6 +41,10 @@ jobs:
     - name: run objspace unit tests
       run: |
         pypy -m pip install -r requirements.txt
+        # pypy/conftest.py still relies on --assert=reinterp, which pytest 3.0
+        # removed, so the app-level tests stay on the formerly vendored
+        # versions; the objspace-pytest4 job tracks the port
+        pypy -m pip install pytest==2.9.2 py==1.4.29
         pypy -m pytest pypy/objspace -v -m "not flaky"
 
     - name: translate
@@ -58,3 +62,31 @@ jobs:
       with:
         name: pypy-ci-build-${{ matrix.os }}${{ matrix.revdb && '-revdb' || '' }}
         path: ./pypy-nightly.tar.bz2
+
+  objspace-pytest4:
+
+    name: objspace tests on pytest 4.6 (informational)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 1
+
+    - name: Set up PyPy 2.7
+      uses: actions/setup-python@v6
+      with:
+        python-version: "pypy-2.7-v7.3.23"
+        cache: 'pip' # caching pip dependencies
+
+    - name: install system dependencies
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: libffi-dev pkg-config
+        version: 1.0
+
+    - name: run objspace unit tests
+      run: |
+        pypy -m pip install -r requirements.txt
+        pypy -m pytest pypy/objspace -v -m "not flaky"
