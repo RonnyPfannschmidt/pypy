@@ -1,22 +1,15 @@
-import py
 from rpython.rlib.objectmodel import not_rpython
 
 class Node(object):
     def view(self):
         from dotviewer import graphclient
+        from rpython.tool.udir import udir
         content = ["digraph G{"]
         content.extend(self.dot())
         content.append("}")
-        try:
-            p = py.test.ensuretemp("automaton").join("temp.dot")
-            remove = False
-        except AttributeError: # pytest lacks ensuretemp, make a normal one
-            p = py.path.local.mkdtemp().join('automaton.dot')
-            remove = True
+        p = udir.join("automaton.dot")
         p.write("\n".join(content))
         graphclient.display_dot_file(str(p))
-        if remove:
-            p.dirpath().remove()
 
 class Symbol(Node):
 
