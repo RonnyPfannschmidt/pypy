@@ -89,6 +89,44 @@ def count_bare_tuple_comprehensions(tokens):
     return hits
 
 
+def count_tuple_prints(tokens):
+    """Count print(a, b) calls in modules without print_function.
+
+    Python 2 prints the tuple '(a, b)' there, Python 3 prints 'a b'.  Both
+    parse, so nothing else notices.
+    """
+    names = [tstr for ttype, tstr, _, _, _ in tokens if ttype == tokenize.NAME]
+    for i in range(len(names) - 3):
+        if (names[i] == 'from' and names[i + 1] == '__future__' and
+                'print_function' in names[i + 2:i + 12]):
+            return 0
+    hits = 0
+    at_start = True
+    for i, (ttype, tstr, _, _, _) in enumerate(tokens):
+        if ttype in (tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT):
+            at_start = True
+            continue
+        if ttype in (tokenize.NL, tokenize.COMMENT):
+            continue
+        if (at_start and ttype == tokenize.NAME and tstr == 'print' and
+                tokens[i + 1][1] == '('):
+            depth = 0
+            for ttype2, tstr2, _, _, _ in tokens[i + 1:]:
+                if ttype2 != tokenize.OP:
+                    continue
+                if tstr2 in '([{':
+                    depth += 1
+                elif tstr2 in ')]}':
+                    depth -= 1
+                    if depth == 0:
+                        break
+                elif tstr2 == ',' and depth == 1:
+                    hits += 1
+                    break
+        at_start = False
+    return hits
+
+
 # (name, matcher, description).  A regex is matched against the source with
 # comments dropped and string contents blanked out, so occurrences inside
 # docstrings or C source templates are not counted.  A function gets the
@@ -145,6 +183,9 @@ CATEGORIES = [
     ('bare_tuple_listcomp',
      count_bare_tuple_comprehensions,
      '[x for x in a, b] instead of [x for x in (a, b)]'),
+    ('tuple_print',
+     count_tuple_prints,
+     'print(a, b) without print_function: prints a tuple on Python 2'),
 ]
 
 

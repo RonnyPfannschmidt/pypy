@@ -42,3 +42,18 @@ def test_bare_tuple_listcomp_ignores_valid_forms():
               'd = [(c, d) for c, d in pairs]\n'
               'e = {k: v for k, v in items}\n')
     assert count('bare_tuple_listcomp', source) == 0
+
+
+def test_tuple_print_counted_without_future_import():
+    source = ('print("a", 1)\n'
+              'print("a")\n'
+              'print(f(a, b))\n'
+              'x = print\n')
+    assert count('tuple_print', source) == 1
+
+
+def test_tuple_print_not_counted_with_future_import():
+    source = ('"""doc"""\n'
+              'from __future__ import absolute_import, print_function\n'
+              'print("a", 1)\n')
+    assert count('tuple_print', source) == 0
