@@ -4,6 +4,8 @@ PYTEST_DONT_REWRITE: a rewritten assert raises an AssertionError subclass,
 which propagates like an ordinary exception instead of aborting where it is
 first caught, so these tests need the asserts left as they are.
 """
+from __future__ import print_function
+
 import re
 
 from rpython.translator.c.test import test_typed
@@ -43,7 +45,7 @@ class TestPlainAssertStandalone(StandaloneTestsVerified):
             try:
                 g(len(argv))
             finally:
-                print 'done'
+                print('done')
         def entry_point(argv):
             f(argv)
             return 0
