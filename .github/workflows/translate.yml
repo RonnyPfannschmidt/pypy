@@ -54,7 +54,10 @@ jobs:
 
     - name: package
       run: |
-        ./pypy/goal/pypy*-c pypy/tool/release/package.py --make-portable --target=.
+        # package.py runs on the new pypy-c and still uses py.path, which no
+        # longer ships in the tree
+        pypy -m pip install --target "$RUNNER_TEMP/py-lib" py==1.11.0
+        PYTHONPATH="$RUNNER_TEMP/py-lib" ./pypy/goal/pypy*-c pypy/tool/release/package.py --make-portable --target=.
 
     - name: upload
       if: success() || failure()
