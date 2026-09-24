@@ -36,8 +36,8 @@ def test_rnormpath_nt():
     assert rpath._nt_rnormpath('\\\\.\\NUL') == r'\\.\NUL'
     assert rpath._nt_rnormpath('\\\\?\\D:/XY\\Z') == r'\\?\D:/XY\Z'
 
-def test_rabspath_relative(tmpdir):
-    tmpdir.chdir()
+def test_rabspath_relative(tmpdir, monkeypatch):
+    monkeypatch.chdir(tmpdir)
     assert rpath.rabspath('foo') == os.path.realpath(str(tmpdir.join('foo')))
 
 def test_rabspath_absolute_posix():
