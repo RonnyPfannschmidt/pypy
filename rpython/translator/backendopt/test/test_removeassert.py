@@ -1,3 +1,6 @@
+"""PYTEST_DONT_REWRITE: these tests count the operations of graphs built from
+plain asserts, which a rewritten assert's failure path would add to.
+"""
 from rpython.flowspace.model import summary
 from rpython.translator.backendopt.removeassert import remove_asserts
 from rpython.translator.backendopt.constfold import constant_fold_graph
