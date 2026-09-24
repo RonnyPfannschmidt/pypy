@@ -80,7 +80,7 @@ jobs:
       if: ${{ !matrix.container }}
       # the container images already carry these; this is for the
       # runners that use setup-python instead
-      run: pypy -m pip install hypothesis==4.39.3 pytest==4.6.11 py==1.11.0
+      run: pypy -m pip install hypothesis==4.39.3 pytest==4.6.11 py==1.11.0 cot-assert==0.2.0
     - name: Install macOS dependencies
       if: ${{ startsWith(matrix.runner, 'macos') }}
       run: |
@@ -127,12 +127,16 @@ jobs:
         esac
         export PYPYCHERRYPICK
         if [ -n "$CONTAINER" ]; then
+          # TODO: drop the cot-assert install once the images carry it,
+          # https://github.com/pypy/pypy-ci/pull/5, and bump the digests
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
             -e PYPYCHERRYPICK \
             -e PYTHONPATH \
             "$CONTAINER" \
+            sh -c 'pypy -m pip install -q --no-cache-dir --target /tmp/cot-assert cot-assert==0.2.0 &&
+                   PYTHONPATH="$PYTHONPATH:/tmp/cot-assert" exec "$@"' sh \
             pypy testrunner/runner.py \
               --config=pypy/testrunner_cfg.py \
               --config=machine_cfg.py \
