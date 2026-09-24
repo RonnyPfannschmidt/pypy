@@ -74,6 +74,8 @@ run() {
     # anything written stays owned by you.
     local tty=()
     [ -t 0 ] && tty=(-it)
+    # TODO: drop the cot-assert install once the images carry it,
+    # https://github.com/pypy/pypy-ci/pull/5
     exec "$engine" run --rm "${tty[@]}" \
         --user "${PYPY_CI_USER:-0}" \
         -v "$here:/workspace:z" \
@@ -81,6 +83,8 @@ run() {
         -e PYTHONPATH=. \
         -e PYPYCHERRYPICK="$cherrypick" \
         "$PYPY_CI_IMAGE" \
+        sh -c 'pypy -m pip install -q --no-cache-dir --target /tmp/cot-assert cot-assert==0.2.1 &&
+               PYTHONPATH="$PYTHONPATH:/tmp/cot-assert" exec "$@"' sh \
         "$@"
 }
 
