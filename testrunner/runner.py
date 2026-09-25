@@ -290,11 +290,7 @@ def execute_tests(run_param, testdirs, logfile, out):
 class RunParam(object):
     dry_run = False
     interp = [os.path.abspath(sys.executable)]
-    pytestpath = os.path.abspath(os.path.join('py', 'bin', 'py.test'))
-    if not os.path.exists(pytestpath):
-        pytestpath = os.path.abspath(os.path.join('pytest.py'))
-        assert os.path.exists(pytestpath)
-    test_driver = [pytestpath]
+    test_driver = ['-m', 'pytest']
 
     parallel_runs = 1
     timeout = None

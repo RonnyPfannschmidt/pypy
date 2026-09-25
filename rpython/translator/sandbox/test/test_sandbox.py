@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import py
 import sys, os, time
 import struct
@@ -50,7 +52,7 @@ def run_in_subprocess(exe):
 
 def test_open_dup():
     def entry_point(argv):
-        fd = os.open("/tmp/foobar", os.O_RDONLY, 0777)
+        fd = os.open("/tmp/foobar", os.O_RDONLY, 0o777)
         assert fd == 77
         fd2 = os.dup(fd)
         assert fd2 == 78
@@ -58,7 +60,7 @@ def test_open_dup():
 
     exe = compile(entry_point)
     g, f = run_in_subprocess(exe)
-    expect(f, g, "ll_os.ll_os_open", ("/tmp/foobar", os.O_RDONLY, 0777), 77)
+    expect(f, g, "ll_os.ll_os_open", ("/tmp/foobar", os.O_RDONLY, 0o777), 77)
     expect(f, g, "ll_os.ll_os_dup",  (77, True), 78)
     g.close()
     tail = f.read()
@@ -68,7 +70,7 @@ def test_open_dup():
 def test_open_dup_rposix():
     from rpython.rlib import rposix
     def entry_point(argv):
-        fd = rposix.open("/tmp/foobar", os.O_RDONLY, 0777)
+        fd = rposix.open("/tmp/foobar", os.O_RDONLY, 0o777)
         assert fd == 77
         fd2 = rposix.dup(fd)
         assert fd2 == 78
@@ -76,7 +78,7 @@ def test_open_dup_rposix():
 
     exe = compile(entry_point)
     g, f = run_in_subprocess(exe)
-    expect(f, g, "ll_os.ll_os_open", ("/tmp/foobar", os.O_RDONLY, 0777), 77)
+    expect(f, g, "ll_os.ll_os_open", ("/tmp/foobar", os.O_RDONLY, 0o777), 77)
     expect(f, g, "ll_os.ll_os_dup",  (77, True), 78)
     g.close()
     tail = f.read()
@@ -85,7 +87,7 @@ def test_open_dup_rposix():
 
 def test_read_write():
     def entry_point(argv):
-        fd = os.open("/tmp/foobar", os.O_RDONLY, 0777)
+        fd = os.open("/tmp/foobar", os.O_RDONLY, 0o777)
         assert fd == 77
         res = os.read(fd, 123)
         assert res == "he\x00llo"
@@ -96,7 +98,7 @@ def test_read_write():
 
     exe = compile(entry_point)
     g, f = run_in_subprocess(exe)
-    expect(f, g, "ll_os.ll_os_open",  ("/tmp/foobar", os.O_RDONLY, 0777), 77)
+    expect(f, g, "ll_os.ll_os_open",  ("/tmp/foobar", os.O_RDONLY, 0o777), 77)
     expect(f, g, "ll_os.ll_os_read",  (77, 123), "he\x00llo")
     expect(f, g, "ll_os.ll_os_write", (77, "world\x00!\x00"), 42)
     expect(f, g, "ll_os.ll_os_close", (77,), None)
@@ -313,7 +315,7 @@ def test_unsafe_mmap():
 
 def test_environ_items():
     def entry_point(argv):
-        print os.environ.items()
+        print(os.environ.items())
         return 0
 
     exe = compile(entry_point)
@@ -340,14 +342,13 @@ class TestPrintedResults:
         import math
         def entry_point(argv):
             a = float(argv[1])
-            print int(math.floor(a - 0.2)),
-            print int(math.ceil(a)),
-            print int(100.0 * math.sin(a)),
+            print(int(math.floor(a - 0.2)), end=' ')
+            print(int(math.ceil(a)), end=' ')
+            print(int(100.0 * math.sin(a)), end=' ')
             mantissa, exponent = math.frexp(a)
-            print int(100.0 * mantissa), exponent,
+            print(int(100.0 * mantissa), exponent, end=' ')
             fracpart, intpart = math.modf(a)
-            print int(100.0 * fracpart), int(intpart),
-            print
+            print(int(100.0 * fracpart), int(intpart))
             return 0
         self.run(entry_point, ["3.011"], "2 4 13 75 2 1 3\n")
 
@@ -356,18 +357,18 @@ class TestPrintedResults:
         def entry_point(argv):
             a = float(argv[1])
             x = math.log(a)
-            print int(x * 100.0)
+            print(int(x * 100.0))
             try:
                 math.log(-a)
             except ValueError:
-                print 'as expected, got a ValueError'
+                print('as expected, got a ValueError')
             else:
-                print 'did not get a ValueError!'
+                print('did not get a ValueError!')
             return 0
         self.run(entry_point, ["3.011"], "110\nas expected, got a ValueError\n")
 
     def test_os_path_safe(self):
         def entry_point(argv):
-            print os.path.join('tmp', argv[1])
+            print(os.path.join('tmp', argv[1]))
             return 0
         self.run(entry_point, ["spam"], os.path.join("tmp", "spam")+'\n')

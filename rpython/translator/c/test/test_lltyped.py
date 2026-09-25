@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import py, random
 from rpython.rtyper.lltypesystem.lltype import *
 from rpython.rtyper.lltypesystem import rffi
@@ -472,7 +474,7 @@ class TestLowLevelType(object):
 
         fn = self.getcompiled(f, [int])
         res = fn(1)
-        print res
+        print(res)
         assert eval(res) == (
             # int
             -sys.maxint, undefined,               # add
@@ -509,7 +511,7 @@ class TestLowLevelType(object):
             )
 
         res = fn(5)
-        print res
+        print(res)
         assert eval(res) == (
             # int
             -sys.maxint+4, undefined,             # add
@@ -743,9 +745,9 @@ class TestLowLevelType(object):
         res = fn()
         assert res == 42
 
-    def test_llgroup_size_limit(self):
-        yield self._test_size_limit, True
-        yield self._test_size_limit, False
+    @py.test.mark.parametrize('toobig', [True, False])
+    def test_llgroup_size_limit(self, toobig):
+        self._test_size_limit(toobig)
 
     def _test_size_limit(self, toobig):
         import sys
@@ -803,7 +805,8 @@ class TestLowLevelType(object):
         #
         glob_sizes = g()
         #
-        def check((ssize, msize, smsize, mssize)):
+        def check(args):
+            ssize, msize, smsize, mssize = args
             if is_arm:
                 # ARM has stronger rules about aligned memory access
                 # so according to the rules for round_up_for_allocation

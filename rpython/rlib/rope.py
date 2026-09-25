@@ -1,4 +1,3 @@
-import py
 import sys
 import math
 
@@ -13,7 +12,7 @@ NEW_NODE_WHEN_LENGTH = 32
 CONVERT_WHEN_SMALLER = 8
 MAX_DEPTH = 32 # maybe should be smaller
 CONCATENATE_WHEN_MULTIPLYING = 128
-HIGHEST_BIT_SET = intmask(1L << (NBITS - 1))
+HIGHEST_BIT_SET = intmask(1 << (NBITS - 1))
 
 def find_fib_index(l):
     if l == 0:
@@ -866,7 +865,8 @@ def view(objs):
         else:
             content.extend(obj.dot(seen, toplevel=True))
     content.append("}")
-    p = py.test.ensuretemp("automaton").join("temp.dot")
+    from rpython.tool.udir import udir
+    p = udir.join("automaton.dot")
     p.write("\n".join(content))
     graphclient.display_dot_file(str(p))
 

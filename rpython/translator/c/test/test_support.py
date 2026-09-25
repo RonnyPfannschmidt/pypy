@@ -1,27 +1,35 @@
+from __future__ import print_function
+
 import random
+
+import pytest
+
 from rpython.translator.c.support import gen_assignments
 
 
-def test_gen_simple_assignments():
-    yield gen_check, [('int @', 'a', 'a')]
-    yield gen_check, [('int @', 'a', 'b')]
-    yield gen_check, [('int @', 'a', 'b'),
-                      ('int @', 'c', 'b')]
-    yield gen_check, [('int @', 'a', 'b'),
-                      ('int @', 'b', 'c')]
-    yield gen_check, [('int @', 'b', 'c'),
-                      ('int @', 'a', 'b')]
-    yield gen_check, [('int @', 'a', 'b'),
-                      ('int @', 'b', 'a')]
-    yield gen_check, [('int @', 'a', 'b'),
-                      ('int @', 'b', 'c'),
-                      ('int @', 'd', 'b')]
+@pytest.mark.parametrize('input', [
+    [('int @', 'a', 'a')],
+    [('int @', 'a', 'b')],
+    [('int @', 'a', 'b'),
+     ('int @', 'c', 'b')],
+    [('int @', 'a', 'b'),
+     ('int @', 'b', 'c')],
+    [('int @', 'b', 'c'),
+     ('int @', 'a', 'b')],
+    [('int @', 'a', 'b'),
+     ('int @', 'b', 'a')],
+    [('int @', 'a', 'b'),
+     ('int @', 'b', 'c'),
+     ('int @', 'd', 'b')],
+])
+def test_gen_simple_assignments(input):
+    gen_check(input)
 
 def gen_check(input):
     for _, dst, src in input:
-        print 'input:', dst, src
+        print('input:', dst, src)
     result = ' '.join(gen_assignments(input))
-    print result
+    print(result)
     result = result.replace('{ int', '').replace('}', '').strip()
     d = {}
     for _, dst, src in input:
@@ -30,10 +38,10 @@ def gen_check(input):
     for _, dst, src in input:
         assert d[dst] == '<value of %s>' % (src,)
 
-def test_gen_check():
+@pytest.mark.parametrize('i', range(100))
+def test_gen_check(i):
     varlist = list('abcdefg')
-    for i in range(100):
-        random.shuffle(varlist)
-        input = [('int @', varlist[n], random.choice(varlist))
-                 for n in range(random.randrange(1, 7))]
-        yield gen_check, input
+    random.shuffle(varlist)
+    input = [('int @', varlist[n], random.choice(varlist))
+             for n in range(random.randrange(1, 7))]
+    gen_check(input)

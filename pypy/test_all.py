@@ -3,16 +3,15 @@
 PyPy Test runner interface
 --------------------------
 
-Running pytest.py starts py.test, the testing tool
-we use in PyPy.  It is distributed along with PyPy,
-but you may get more information about it at
-http://pytest.org/.
+Running this starts pytest, the testing tool we use in PyPy.
+See requirements.txt for the version, and http://pytest.org/ for
+more information about it.
 
 Note that it makes no sense to run all tests at once.
 You need to pick a particular subdirectory and run
 
     cd pypy/.../test
-    ../../../pytest.py [options]
+    python -m pytest [options]
 
 For more information, use test_all.py -h.
 """

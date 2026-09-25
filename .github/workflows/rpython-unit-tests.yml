@@ -6,7 +6,7 @@ name: Rpython Unit Tests
 # Note: this action will only run if there are changes to one of:
 #  - rpython folder
 #  - this workflow file
-#  - pytest.py
+#  - requirements.txt
 # add more items to `paths` if we missed some!
 
 on:
@@ -14,13 +14,13 @@ on:
     branches: [ "main", "py3.[0-9]+" ]
     paths:
         - "rpython/**/*"
-        - "pytest.py"
+        - "requirements.txt"
         - ".github/workflows/rpython-unit-tests.yml"
   pull_request:
     branches: [ "main", "py3.[0-9]+" ]
     paths:
       - "rpython/**/*"
-      - "pytest.py"
+      - "requirements.txt"
       - ".github/workflows/rpython-unit-tests.yml"
   workflow_dispatch:
 
@@ -81,7 +81,9 @@ jobs:
         python-version: "pypy2.7-8.0.0"
     - name: Install test dependencies
       if: ${{ !matrix.container }}
-      run: pypy -m pip install hypothesis==4.39.3
+      # the container images already carry these; this is for the
+      # runners that use setup-python instead
+      run: pypy -m pip install hypothesis==4.39.3 pytest==4.6.11 py==1.11.0 cot-assert==0.2.1
     - name: Install macOS dependencies
       if: ${{ startsWith(matrix.runner, 'macos') }}
       run: |
@@ -117,7 +119,9 @@ jobs:
         SUITE: ${{ matrix.suite }}
         ARCH: ${{ matrix.arch }}
         CONTAINER: ${{ matrix.container }}
-        PYTHONPATH: .
+        # absolute: runner.py starts pytest from inside rpython/, and plugins
+        # load before any conftest puts the checkout on sys.path
+        PYTHONPATH: ${{ github.workspace }}
         PYPY_LOCALBASE: ${{ matrix.localbase }}
         TEST_TIMEOUT: ${{ matrix.test_timeout || 1759 }}
         PYPY_SIGTERM_DUMP_DIR: ${{ github.workspace }}/sigterm-dumps
@@ -147,14 +151,18 @@ jobs:
         esac
         export PYPYCHERRYPICK
         if [ -n "$CONTAINER" ]; then
+          # TODO: drop the cot-assert install once the images carry it,
+          # https://github.com/pypy/pypy-ci/pull/5, and bump the digests
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
             -e PYPYCHERRYPICK \
-            -e PYTHONPATH \
+            -e PYTHONPATH=/workspace \
             -e PYPY_SIGTERM_DUMP_DIR=/workspace/sigterm-dumps \
             -e GC_MARKERS=1 \
             "$CONTAINER" \
+            sh -c 'pypy -m pip install -q --no-cache-dir --target /tmp/cot-assert cot-assert==0.2.1 &&
+                   PYTHONPATH="$PYTHONPATH:/tmp/cot-assert" exec "$@"' sh \
             pypy testrunner/runner.py \
               --config=pypy/testrunner_cfg.py \
               --config=machine_cfg.py \

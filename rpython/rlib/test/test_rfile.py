@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import os, sys, py, errno, gc
 from rpython.rtyper.test.tool import BaseRtypingTest
 from rpython.tool.udir import udir
@@ -69,7 +71,7 @@ class TestFile(BaseRtypingTest):
                 assert False
 
             try:
-                fd = os.open('.', os.O_RDONLY, 0777)
+                fd = os.open('.', os.O_RDONLY, 0o777)
             except OSError as e:
                 assert os.name == 'nt' and e.errno == errno.EACCES
             else:
@@ -494,7 +496,7 @@ class TestDirect:
             for i in range(250):
                 s = ''.join([chr(32+(k&63)) for k in range(j, j + i)])
                 j += 1
-                print >> f, s
+                print(s, file=f)
         with open(fname) as fid:
             expected = fid.readlines()
         expected += ['', '']

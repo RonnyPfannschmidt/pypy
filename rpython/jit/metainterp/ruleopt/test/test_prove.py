@@ -1,9 +1,8 @@
+from __future__ import print_function
+
 import pytest
-try:
-    import rply
-    import z3
-except ImportError:
-    pytest.skip('rply or z3 not installed')
+pytest.importorskip("rply")
+pytest.importorskip("z3")
 
 from rpython.rlib.rarithmetic import LONG_BIT, r_uint, intmask, ovfcheck, uint_mul_high
 
@@ -27,7 +26,7 @@ def test_z3_prove(name, rule):
     try:
         p.check_rule(rule)
     except ProofProblem as e:
-        print e.format()
+        print(e.format())
         raise
 
 def test_sorry():

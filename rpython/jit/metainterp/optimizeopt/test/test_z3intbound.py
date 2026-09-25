@@ -5,6 +5,8 @@ The approach is to generate random bounds, then perform operations on them, and
 ask Z3 whether the resulting bound is a sound approximation of the result.
 """
 
+from __future__ import print_function
+
 import pytest
 import sys
 import gc
@@ -27,11 +29,11 @@ from rpython.jit.metainterp.optimizeopt.test.test_intbound import knownbits_and_
 
 from rpython.jit.metainterp.optimizeopt.test.test_z3checktests import z3_pymod, z3_pydiv
 
-try:
-    import z3
-    from hypothesis import given, strategies, assume, example
-except ImportError:
-    pytest.skip("please install z3 (z3-solver on pypi) and hypothesis")
+# z3 is z3-solver on pypi
+pytest.importorskip("z3")
+pytest.importorskip("hypothesis")
+import z3
+from hypothesis import given, strategies, assume, example
 
 def BitVecVal(value):
     return z3.BitVecVal(value, LONG_BIT)
@@ -128,7 +130,7 @@ def prove(cond, use_timeout=True):
     if z3res == z3.unsat:
         pass
     elif z3res == z3.unknown:
-        print "timeout", cond
+        print("timeout", cond)
         assert use_timeout
     elif z3res == z3.sat:
         # not possible to prove!
@@ -245,7 +247,7 @@ def test_known(b1, b2):
 @given(bounds, bounds)
 def test_mod(b1, b2):
     b3 = b1.mod_bound(b2)
-    print b1, b2, b3
+    print(b1, b2, b3)
     var1, formula1 = to_z3(b1)
     var2, formula2 = to_z3(b2)
     var3, nonzero = z3_pymod_nonzero(var1, var2)
@@ -310,7 +312,7 @@ def test_shrink_knownbits_to_bounds(x, y):
 
 @given(ints, ints, uints, uints)
 def test_shrink_mixed(x, y, value, tmask):
-    print x, y, value, tmask
+    print(x, y, value, tmask)
     x, y = sorted([x, y])
     b = IntBound(x, y, value & ~tmask, tmask, do_shrinking=False)
     var1, formula1 = to_z3(b)
@@ -416,12 +418,12 @@ def z3_mul_overflow(a, b):
 
 def s(p):
     if p.sort() == z3.BoolSort():
-        print model.evaluate(p)
+        print(model.evaluate(p))
     else:
-        print hex(model.evaluate(p).as_signed_long())
+        print(hex(model.evaluate(p).as_signed_long()))
 
 def u(p):
-    print "r_uint(%s)" % bin(model.evaluate(p).as_long())
+    print("r_uint(%s)" % bin(model.evaluate(p).as_long()))
 
 class Z3IntBound(IntBound):
     def __init__(self, lower, upper, tvalue, tmask, concrete_variable=None):
@@ -630,8 +632,8 @@ class Z3IntBound(IntBound):
         except CheckError as e:
             model = e.args[1]
             example_self = self.convert_to_concrete(model)
-            print "ERROR", args
-            print "COUNTEREXAMPLE", example_self
+            print("ERROR", args)
+            print("COUNTEREXAMPLE", example_self)
             assert 0
 
 def make_z3_intbounds_instance(name, concrete_variable=None):

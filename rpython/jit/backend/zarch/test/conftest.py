@@ -16,3 +16,14 @@ def pytest_ignore_collect(path, config):
     if not IS_ZARCH:
         if os.path.commonprefix([path, THIS_DIR]) == THIS_DIR:  # workaround for bug in pytest<3.0.5
             return True
+
+class SkippedModule(pytest.Module):
+    def collect(self):
+        pytest.skip("ZARCH tests skipped: cpu is %r" % (cpu,),
+                    allow_module_level=True)
+
+def pytest_pycollect_makemodule(path, parent):
+    # files named on the command line bypass pytest_ignore_collect; some of
+    # them cannot even be imported on another cpu
+    if not IS_ZARCH:
+        return SkippedModule(path, parent)

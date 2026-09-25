@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import py, math
 from rpython.rtyper.lltypesystem.module.test.math_cases import (MathTests,
                                                                 get_tester)
@@ -5,7 +7,8 @@ from rpython.translator.c.test.test_standalone import StandaloneTests
 from rpython.rlib import rfloat
 
 
-def get_test_case((fnname, args, expected)):
+def get_test_case(args):
+    fnname, args, expected = args
     try:
         fn = getattr(math, fnname)
     except AttributeError:
@@ -38,10 +41,10 @@ def fn(args):
     for i in range(len(testfnlist)):
         testfn = testfnlist[i]
         if not testfn():
-            print "error:", reprlist[i]
+            print("error:", reprlist[i])
             err = True
     if not err:
-        print "all ok"
+        print("all ok")
     return 0
 
 
