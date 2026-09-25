@@ -3,8 +3,8 @@ import platform
 from rpython.translator.platform.arch.s390x import (s390x_cpu_revision,
         extract_s390x_cpu_ids)
 
-if platform.machine() != 's390x':
-    py.test.skip("s390x tests only")
+pytestmark = py.test.mark.skipif(platform.machine() != 's390x',
+                                 reason="s390x tests only")
 
 def test_cpuid_s390x():
     revision = s390x_cpu_revision()

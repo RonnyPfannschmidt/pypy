@@ -10,8 +10,8 @@ JIT_EXECUTABLE = py.path.local(path)
 del path
 CRASH_FILE = os.path.abspath(jitcrashers.__file__.rstrip("c"))
 
-if not JIT_EXECUTABLE.check():
-    py.test.skip("no JIT executable")
+pytestmark = py.test.mark.skipif(not JIT_EXECUTABLE.check(),
+                                 reason="no JIT executable")
 
 def setup_module(mod):
     mod._old_cwd = os.getcwd()
@@ -32,9 +32,9 @@ def check_crasher(func_name):
         print(e.out)
         raise
 
-def test_jit_crashers():
-    # Iterate in over sorted test functions, so it's always consistent and
-    # reproducible.
-    for func_name in sorted(jitcrashers.__dict__):
-        if func_name.startswith("jit_"):
-            yield check_crasher, func_name
+# Parametrized over sorted names, so the order is always consistent and
+# reproducible.
+@py.test.mark.parametrize('func_name', sorted(
+    name for name in jitcrashers.__dict__ if name.startswith("jit_")))
+def test_jit_crashers(func_name):
+    check_crasher(func_name)
