@@ -91,17 +91,21 @@ jobs:
       env:
         CONTAINER: ${{ matrix.container }}
       shell: bash
+      # pypy/conftest.py still relies on --assert=reinterp, which pytest 3.0
+      # removed, so the app-level tests stay on the formerly vendored
+      # versions; the objspace-pytest4 job tracks the port
       run: |
         set -o pipefail
+        INSTALL='pypy -m pip install -r requirements.txt && pypy -m pip install pytest==2.9.2 py==1.4.29'
         if [ -n "$CONTAINER" ]; then
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
             "$CONTAINER" \
-            bash -c 'pypy -m pip install -r requirements.txt && pypy pytest.py pypy/objspace -v -m "not flaky"'
+            bash -c "$INSTALL"' && pypy -m pytest pypy/objspace -v -m "not flaky"'
         else
-          pypy -m pip install -r requirements.txt
-          pypy pytest.py pypy/objspace -v -m "not flaky"
+          bash -c "$INSTALL"
+          pypy -m pytest pypy/objspace -v -m "not flaky"
         fi
 
     - name: translate
@@ -136,14 +140,18 @@ jobs:
           Windows) PYPY_C=pypy/goal/pypy*-c.exe; PORTABLE="" ;;
           *)       PYPY_C=pypy/goal/pypy*-c;      PORTABLE="--make-portable" ;;
         esac
+        # package.py runs on the new pypy-c and still uses py.path, which no
+        # longer ships in the tree
         if [ -n "$CONTAINER" ]; then
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
             "$CONTAINER" \
-            bash -c "./$PYPY_C pypy/tool/release/package.py $PORTABLE --target=."
+            bash -c "pypy -m pip install -q --target /tmp/py-lib py==1.11.0 &&
+                     PYTHONPATH=/tmp/py-lib ./$PYPY_C pypy/tool/release/package.py $PORTABLE --target=."
         else
-          ./$PYPY_C pypy/tool/release/package.py $PORTABLE --target=.
+          pypy -m pip install -q --target "$RUNNER_TEMP/py-lib" py==1.11.0
+          PYTHONPATH="$RUNNER_TEMP/py-lib" ./$PYPY_C pypy/tool/release/package.py $PORTABLE --target=.
         fi
 
     - name: upload
@@ -157,3 +165,23 @@ jobs:
         path: |
           ./pypy-nightly.tar.gz
           ./pypy-nightly.zip
+
+  objspace-pytest4:
+
+    name: objspace tests on pytest 4.6 (informational)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    container:
+      # latest as of 2026-09-22, pypy-ci 50c29d65 (pypy 8.0.0)
+      image: ghcr.io/pypy/buildworker_x86_64@sha256:c1838412cc6cd01472fd64614dc45b4ba1eea6f21df0a5d0824cdca07cd44a54
+      options: --user 0
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 1
+
+    - name: run objspace unit tests
+      run: |
+        pypy -m pip install -r requirements.txt
+        pypy -m pytest pypy/objspace -v -m "not flaky"

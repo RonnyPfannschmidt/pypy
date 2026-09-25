@@ -1,5 +1,5 @@
 import py
-from _pytest.monkeypatch import monkeypatch
+from _pytest.monkeypatch import MonkeyPatch
 import sys
 import ctypes, math
 from rpython.rtyper.lltypesystem import lltype, rffi
@@ -34,7 +34,7 @@ class FakeFFI(object):
     
     def __init__(self, fake_call_impl_any):
         self.fake_call_impl_any = fake_call_impl_any
-        self.monkey = monkeypatch()
+        self.monkey = MonkeyPatch()
         
     def __enter__(self, *args):
         self.monkey.setattr(jit_libffi, 'jit_ffi_call_impl_any', self.fake_call_impl_any)
