@@ -35,6 +35,7 @@ class GeneratorIterator(object):
             self.current = e
             return i
         raise StopIteration
+    __next__ = next
 
     def __iter__(self):
         return self

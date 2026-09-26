@@ -1188,6 +1188,7 @@ class TestRclass(BaseRtypingTest):
                     raise StopIteration
                 self.counter += 1
                 return self.counter - 1
+            __next__ = next
 
         def f():
             i = Iterable()
@@ -1211,6 +1212,7 @@ class TestRclass(BaseRtypingTest):
                     raise StopIteration
                 self.counter += self.step
                 return self.counter - 1
+            __next__ = next
 
         class Iterable(BaseIterable):
             step = 1
@@ -1239,6 +1241,7 @@ class TestRclass(BaseRtypingTest):
 
             def next(self):
                 raise TyperError
+            __next__ = next
 
         def f():
             i = Iterable()
