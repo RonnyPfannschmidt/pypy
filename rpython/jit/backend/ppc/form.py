@@ -80,7 +80,7 @@ class IDesc(object):
 
     def default(self, **defs):
         assert len(defs) == 1
-        f, v = defs.items()[0]
+        f, v = list(defs.items())[0]
         self.defaults = self.defaults + ((self.fieldmap[f], v),)
         return self
 
