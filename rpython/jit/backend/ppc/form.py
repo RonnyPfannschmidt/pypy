@@ -88,7 +88,7 @@ class IDesc(object):
         s = self.specializations.copy()
         ms = {}
         ds = {}
-        for fname, v in more_specializatons.iteritems():
+        for fname, v in more_specializatons.items():
             field = self.fieldmap[fname]
             if field not in self.fields:
                 raise FormException("don't know about '%s' here" % field)
