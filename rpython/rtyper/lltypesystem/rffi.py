@@ -1273,7 +1273,7 @@ def sizeof(tp):
         return size
     if (tp is lltype.Signed or isinstance(tp, lltype.Ptr)
                             or tp is llmemory.Address):
-        return LONG_BIT/8
+        return LONG_BIT // 8
     if tp is lltype.Char or tp is lltype.Bool:
         return 1
     if tp is lltype.UniChar:
