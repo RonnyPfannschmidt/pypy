@@ -1,0 +1,1 @@
+import rpython.tool.no_such_module_for_py3imports
