@@ -2,6 +2,7 @@
 from __future__ import print_function
 
 import os, py
+from rpython.tool.twothree import unicode
 pytestmark = py.test.mark.skipif(os.name != 'nt',
                                  reason='tests for win32 only')
 
