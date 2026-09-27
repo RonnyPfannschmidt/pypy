@@ -177,3 +177,10 @@ def test_assert_isinstance_str_stays_str():
         "    assert isinstance(x, str)\n"
         "    return x\n")
     assert isinstance(annotate(f, []), annmodel.SomeString)
+
+class HoldsUnichr(object):
+    constchar = unichr
+
+def test_unichr_is_no_method():
+    # as a built-in function, unichr does not bind as a method
+    assert HoldsUnichr().constchar(65) == u'A'

@@ -58,11 +58,20 @@ else:
 if hasattr(builtins, 'unichr'):
     unichr = builtins.unichr
 else:
-    def unichr(i):
+    class _Unichr(object):
         """chr() on Python 3, but not the same object: RPython's chr()
         makes a Char and its unichr() a UniChar, and the annotator and the
-        rtyper key their built-ins by object."""
-        return unicode(chr(i))
+        rtyper key their built-ins by object.  An instance, not a function,
+        so that as a class attribute it does not become a method, just as
+        built-in functions do not."""
+        __name__ = 'unichr'
+
+        def __call__(self, i):
+            return unicode(chr(i))
+
+        def __repr__(self):
+            return '<built-in function unichr>'
+    unichr = _Unichr()
 xrange = getattr(builtins, 'xrange', range)
 basestring = getattr(builtins, 'basestring', (str, bytes))
 buffer = getattr(builtins, 'buffer', memoryview)
