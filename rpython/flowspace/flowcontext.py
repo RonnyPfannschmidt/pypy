@@ -16,6 +16,7 @@ from rpython.flowspace.specialcase import (rpython_print_item,
     rpython_print_newline, rpython_print_end)
 from rpython.flowspace.operation import op
 from rpython.flowspace.bytecode import BytecodeCorruption
+from rpython.flowspace.textpolicy import policy_of, type_global
 
 w_None = const(None)
 
@@ -1080,6 +1081,8 @@ class FlowContext(object):
     def find_global(self, w_globals, varname):
         try:
             value = w_globals.value[varname]
+            value = type_global(value, varname, policy_of(self.graph.func),
+                                w_globals.value)
         except KeyError:
             # not in the globals, now look in the built-ins
             try:

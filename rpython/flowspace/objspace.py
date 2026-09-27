@@ -9,6 +9,7 @@ from rpython.flowspace.flowcontext import (FlowContext, fixeggblocks)
 from rpython.flowspace.generator import (tweak_generator_graph,
         make_generator_entry_graph)
 from rpython.flowspace.pygraph import PyGraph
+from rpython.flowspace.textpolicy import policy_of
 
 
 def _assert_rpythonic(func):
@@ -43,7 +44,7 @@ def build_flow(func):
     if (isgeneratorfunction(func) and
             not hasattr(func, '_generator_next_method_of_')):
         return make_generator_entry_graph(func)
-    code = HostCode._from_code(func.__code__)
+    code = HostCode._from_code(func.__code__, policy_of(func))
     graph = PyGraph(func, code)
     ctx = FlowContext(graph, code)
     ctx.build_flow()

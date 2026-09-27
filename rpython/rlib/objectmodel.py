@@ -206,6 +206,15 @@ def enforceargs(*types_, **kwds):
         return result
     return decorator
 
+def text_policy(policy):
+    """ tell the flow space what the text constants of the function stand
+    for on Python 3 hosts: 'prefix' (u'' is unicode, the default), 'str'
+    or 'unicode'.  See rpython/flowspace/textpolicy.py."""
+    def decorate(func):
+        func._text_policy_ = policy
+        return func
+    return decorate
+
 def always_inline(func):
     """ mark the function as to-be-inlined by the RPython optimizations (not
     the JIT!), no matter its size."""

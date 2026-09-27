@@ -7,6 +7,7 @@ from opcode import EXTENDED_ARG, HAVE_ARGUMENT
 from rpython.tool.stdlib_opcode import host_bytecode_spec
 from rpython.flowspace.argument import Signature
 from rpython.tool.twothree import builtins
+from rpython.flowspace.textpolicy import DEFAULT_POLICY, type_constant
 
 try:
     from __pypy__ import _promote
@@ -360,7 +361,7 @@ _FUSING_PASSES = [_fuse_slice, _fuse_constant_list, _fuse_keyword_names,
                   _fuse_star_call, _fuse_conversion]
 
 
-def decode_instructions(code):
+def decode_instructions(code, consts, text_policy):
     """Decode a host code object with the dis module (Python 3 hosts).
 
     Returns ({offset: (next_offset, opname, oparg)}, exception_entries).
@@ -368,6 +369,8 @@ def decode_instructions(code):
     inline cache entries and the unit and direction of jumps.  The
     exception entries are (start, end, target, depth, lasti) tuples, with
     'end' exclusive, from the exception table of CPython 3.11 and later.
+    Text constants are typed by text_policy (see textpolicy.py); typed
+    ones are appended to consts, a copy of co_consts.
     """
     instrs = []
     prefixes = {}     # EXTENDED_ARG offset -> offset of its instruction
@@ -381,7 +384,14 @@ def decode_instructions(code):
         for offset in pending:
             prefixes[offset] = instr.offset
         pending = []
-        instrs.append(Instruction(instr, code))
+        decoded = Instruction(instr, code)
+        if instr.opname in ('LOAD_CONST', 'RETURN_CONST'):
+            typed = type_constant(instr.argval, text_policy,
+                                  code.co_filename, instr.positions)
+            if typed is not instr.argval:
+                decoded.oparg = len(consts)
+                consts.append(typed)
+        instrs.append(decoded)
     bytecode = dis.Bytecode(code)
     exception_entries = tuple(
         (entry.start, entry.end, entry.target, entry.depth, entry.lasti)
@@ -440,11 +450,13 @@ class HostCode(object):
         self.signature = cpython_code_signature(self)
 
     @classmethod
-    def _from_code(cls, code):
+    def _from_code(cls, code, text_policy=DEFAULT_POLICY):
         """Initialize the code object from a real (CPython) one.
         """
+        consts = list(code.co_consts)
         if HAS_GET_INSTRUCTIONS:
-            instructions, exception_entries = decode_instructions(code)
+            instructions, exception_entries = decode_instructions(
+                code, consts, text_policy)
         else:
             instructions, exception_entries = None, ()
         return cls(code.co_argcount,
@@ -452,7 +464,7 @@ class HostCode(object):
                    code.co_stacksize,
                    code.co_flags,
                    code.co_code,
-                   list(code.co_consts),
+                   consts,
                    list(code.co_names),
                    list(code.co_varnames),
                    code.co_filename,

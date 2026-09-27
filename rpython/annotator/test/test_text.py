@@ -67,3 +67,66 @@ def test_unicode_call():
         return unicode('hello')[i]
     assert isinstance(annotate(f, [int]), annmodel.SomeUnicodeCodePoint)
     assert interpret(f, [1]) == u'e'
+
+# ____________________________________________________________
+# the flow space's text policy (rpython/flowspace/textpolicy.py)
+
+from rpython.rlib.objectmodel import text_policy
+
+U_GLOBAL = u'module-level'
+S_GLOBAL = 'module-level'
+
+def test_prefix_policy_literals():
+    def f(n):
+        if n:
+            return u'abc'
+        return u'x' + u'y'
+    assert isinstance(annotate(f, [int]), annmodel.SomeUnicodeString)
+    def g(n):
+        if n:
+            return 'abc'
+        return 'x' + 'y'
+    assert isinstance(annotate(g, [int]), annmodel.SomeString)
+
+def test_prefix_policy_mixed_tuple():
+    def f(n):
+        t = (u'p', 'q')
+        return t[n & 1]
+    with py.test.raises(annmodel.UnionError):
+        annotate(f, [int])
+
+def test_prefix_policy_globals():
+    def f():
+        return U_GLOBAL
+    assert isinstance(annotate(f, []), annmodel.SomeUnicodeString)
+    def g():
+        return S_GLOBAL
+    assert isinstance(annotate(g, []), annmodel.SomeString)
+
+@py3_only
+def test_str_policy():
+    @text_policy('str')
+    def f():
+        return u'abc'
+    assert isinstance(annotate(f, []), annmodel.SomeString)
+
+@py3_only
+def test_unicode_policy():
+    @text_policy('unicode')
+    def f():
+        return 'abc'
+    assert isinstance(annotate(f, []), annmodel.SomeUnicodeString)
+
+def test_keywords_stay_str():
+    def g(a=0, k=0):
+        return a + k
+    @text_policy('prefix')
+    def f(n):
+        return g(n, k=1)
+    assert isinstance(annotate(f, [int]), annmodel.SomeInteger)
+
+def test_unicode_literal_rtyped():
+    def f(n):
+        s = u'\u20ac' + unichr(n)
+        return len(s) * 1000 + ord(s[0]) - 0x20ac + ord(s[1])
+    assert interpret(f, [65]) == 2065
