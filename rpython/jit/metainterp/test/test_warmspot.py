@@ -454,6 +454,7 @@ class TestLLWarmspot(LLJitMixin):
                     raise StopIteration
                 self.cur += 1
                 return self.cur
+            __next__ = next
 
         def f(n):
             res = 0
@@ -530,6 +531,7 @@ class TestLLWarmspot(LLJitMixin):
                 except OverflowError:
                     raise StopIteration
                 return self.cur
+            __next__ = next
 
         def f(n):
             res = 0
