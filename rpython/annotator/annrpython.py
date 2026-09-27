@@ -6,6 +6,7 @@ from contextlib import contextmanager
 
 from rpython.tool.ansi_print import AnsiLogger
 from rpython.tool.pairtype import pair
+from rpython.tool import divlog
 from rpython.tool.error import (format_blocked_annotation_error,
                              gather_error, source_lines)
 from rpython.flowspace.model import Variable, Constant, checkgraph
@@ -652,6 +653,8 @@ class RPythonAnnotator(object):
             if isinstance(self.annotation(arg), annmodel.SomeImpossibleValue):
                 raise BlockedInference(self, op, -1)
         resultcell = op.consider(self)
+        if divlog.LOGFILE and op.opname in divlog.DIVISIONS:
+            divlog.record(self, op)
         if resultcell is None:
             resultcell = s_ImpossibleValue
         elif resultcell == s_ImpossibleValue:
