@@ -43,6 +43,43 @@ JUMP_OPCODES = frozenset(getattr(opcode, 'hasjump',
                                  opcode.hasjrel + opcode.hasjabs))
 
 
+_ARGUMENT_DECODERS = {}
+
+def _decodes(*opnames):
+    def register(func):
+        for opname in opnames:
+            _ARGUMENT_DECODERS[opname] = func
+        return func
+    return register
+
+def _normalize(instr, code):
+    """(opname, oparg) of a dis instruction, as the handlers take them.
+
+    The handlers get one encoding for all hosts; the host-specific
+    encodings of the arguments are unpacked here.
+    """
+    decoder = _ARGUMENT_DECODERS.get(instr.opname)
+    if decoder is not None:
+        return decoder(instr, code)
+    if instr.opcode in JUMP_OPCODES:
+        return instr.opname, instr.argval
+    if instr.arg is None:
+        return instr.opname, 0
+    return instr.opname, instr.arg
+
+@_decodes('LOAD_FAST_LOAD_FAST', 'LOAD_FAST_BORROW_LOAD_FAST_BORROW',
+          'STORE_FAST_LOAD_FAST', 'STORE_FAST_STORE_FAST')
+def _decode_two_locals(instr, code):
+    return instr.opname, (instr.arg >> 4, instr.arg & 15)
+
+@_decodes('LOAD_DEREF', 'STORE_DEREF', 'DELETE_DEREF', 'LOAD_CLOSURE')
+def _decode_free_variable(instr, code):
+    # Python 3.11+ numbers these across locals, cells and free variables.
+    # RPython functions have no cell variables, so an index into
+    # co_freevars means the same on every host.
+    return instr.opname, code.co_freevars.index(instr.argval)
+
+
 def decode_instructions(code):
     """Decode a host code object with the dis module (Python 3 hosts).
 
@@ -62,13 +99,8 @@ def decode_instructions(code):
             # instruction that follows; jumps may still target the prefix
             table[instr.offset] = decoded
         else:
-            if instr.opcode in JUMP_OPCODES:
-                oparg = instr.argval
-            elif instr.arg is None:
-                oparg = 0
-            else:
-                oparg = instr.arg
-            decoded = (next_offset, instr.opname, oparg)
+            opname, oparg = _normalize(instr, code)
+            decoded = (next_offset, opname, oparg)
             table[instr.offset] = decoded
         next_offset = instr.offset
     bytecode = dis.Bytecode(code)
