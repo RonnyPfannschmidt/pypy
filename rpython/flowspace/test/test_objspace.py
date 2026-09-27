@@ -57,11 +57,21 @@ class Base:
                 result[op.opname] += 1
         return result
 
+# opcodes that no code object contains: dis hides CACHE entries and
+# instrumented or specialized forms, and pseudo-opcodes (numbered from 256)
+# exist only in the compiler
+NOT_IN_CODE_OBJECTS = set(['CACHE', 'RESERVED', 'ENTER_EXECUTOR',
+                           'INTERPRETER_EXIT', 'EXIT_INIT_CHECK',
+                           'TRACE_RECORD'])
+
 def test_all_opcodes_defined():
-    opnames = set(host_bytecode_spec.method_names)
+    opnames = set(name for index, name in
+                  enumerate(host_bytecode_spec.method_names)
+                  if index < 256 and not name.startswith('INSTRUMENTED_'))
     methods = set([name for name in dir(FlowContext) if name.upper() == name])
-    handled_elsewhere = set(['EXTENDED_ARG', 'LOAD_REVDB_VAR'])
-    missing = opnames - methods - handled_elsewhere
+    # decoded away by HostCode (see bytecode.py)
+    handled_elsewhere = set(['EXTENDED_ARG', 'LOAD_REVDB_VAR', 'KW_NAMES'])
+    missing = opnames - methods - handled_elsewhere - NOT_IN_CODE_OBJECTS
     assert not missing
 
 class TestFlowObjSpace(Base):
