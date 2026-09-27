@@ -91,10 +91,10 @@ def annotationoftype(t, bookkeeper=False):
         return SomeInteger()
     elif t is float:
         return SomeFloat()
-    elif issubclass(t, str): # py.lib uses annotated str subclasses
-        return SomeString()
     elif t is unicode:
         return SomeUnicodeString()
+    elif issubclass(t, str): # py.lib uses annotated str subclasses
+        return SomeString()
     elif t is type(None):
         return s_None
     elif bookkeeper and extregistry.is_registered_type(t):

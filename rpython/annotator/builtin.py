@@ -199,6 +199,7 @@ for name, value in list(globals().items()):
         if original is not None:
             BUILTIN_ANALYZERS[original] = value
 BUILTIN_ANALYZERS[unichr] = builtin_unichr
+BUILTIN_ANALYZERS[unicode] = builtin_unicode
 
 
 @analyzer_for(getattr(object.__init__, 'im_func', object.__init__))

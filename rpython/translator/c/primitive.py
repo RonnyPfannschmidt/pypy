@@ -150,7 +150,7 @@ def name_singlefloat(value, db):
         return repr(value) + 'f'
 
 def name_char(value, db):
-    assert type(value) is str and len(value) == 1
+    assert type(value) is str and len(value) == 1 and value <= '\xff'
     if ' ' <= value < '\x7f':
         return "'%s'" % (value.replace("\\", r"\\").replace("'", r"\'"),)
     else:

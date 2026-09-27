@@ -44,7 +44,17 @@ except AttributeError:
 # built-in itself; on Python 3 it is the nearest equivalent there.  Import the
 # ones a module uses from here, instead of relying on them being built-ins.
 long = getattr(builtins, 'long', int)
-unicode = getattr(builtins, 'unicode', str)
+if hasattr(builtins, 'unicode'):
+    unicode = builtins.unicode
+else:
+    class unicode(str):
+        """Text that stands for an RPython unicode string on Python 3.
+
+        A plain str stands for an RPython str there (see the flow space's
+        text policy), so RPython's unicode needs a host type of its own for
+        its constants and UniChar values.  str's methods return plain strs,
+        so the type does not survive host-level operations."""
+        __slots__ = ()
 if hasattr(builtins, 'unichr'):
     unichr = builtins.unichr
 else:
@@ -52,7 +62,7 @@ else:
         """chr() on Python 3, but not the same object: RPython's chr()
         makes a Char and its unichr() a UniChar, and the annotator and the
         rtyper key their built-ins by object."""
-        return chr(i)
+        return unicode(chr(i))
 xrange = getattr(builtins, 'xrange', range)
 basestring = getattr(builtins, 'basestring', (str, bytes))
 buffer = getattr(builtins, 'buffer', memoryview)
@@ -143,6 +153,8 @@ def is_builtin_type(cls):
     Python 2 keeps the built-in exceptions in a module of their own,
     'exceptions'; Python 3 puts them into builtins with the other types.
     """
+    if cls is unicode:
+        return True
     return (cls.__module__ == builtins.__name__ and
             not issubclass(cls, BaseException))
 

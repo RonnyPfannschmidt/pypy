@@ -22,6 +22,7 @@ from rpython.annotator.binaryop import _dict_can_only_throw_nothing
 from rpython.annotator.classdesc import ClassDesc, is_primitive_type, BuiltinTypeDesc
 from rpython.annotator.model import AnnotatorError
 from rpython.annotator.argument import simple_args, complex_args
+from rpython.tool.twothree import unicode
 
 UNARY_OPERATIONS = set([oper.opname for oper in op.__dict__.values()
                         if oper.dispatch == 1])
@@ -44,14 +45,20 @@ def our_issubclass(bk, cls1, cls2):
     return toclassdesc(cls1).issubclass(toclassdesc(cls2))
 
 
-def is_other_machine_int(knowntype, typ):
-    """Whether typ is one of the machine-sized integer classes of rarithmetic
-    and knowntype is int or bool.  An int is no r_int or r_uint instance;
-    Python 2 knew that because they subclass long, but on Python 3 they
-    subclass int."""
+def is_unrelated_rpython_type(knowntype, typ):
+    """Whether an object of knowntype is never an RPython instance of typ,
+    though the host classes are related.
+
+    An int is no r_int or r_uint instance; Python 2 knew that because they
+    subclass long, but on Python 3 they subclass int.  RPython's str and
+    unicode are unrelated; on Python 3 twothree.unicode subclasses str."""
     from rpython.rlib.rarithmetic import base_int
-    return (issubclass(typ, base_int) and issubclass(knowntype, int) and
-            not issubclass(knowntype, base_int))
+    if (issubclass(typ, base_int) and issubclass(knowntype, int) and
+            not issubclass(knowntype, base_int)):
+        return True
+    return (unicode is not str and
+            (knowntype is unicode and typ is str or
+             knowntype is str and typ is unicode))
 
 def s_isinstance(annotator, s_obj, s_type, variables):
     if not s_type.is_constant():
@@ -59,13 +66,15 @@ def s_isinstance(annotator, s_obj, s_type, variables):
     r = SomeBool()
     typ = s_type.const
     bk = annotator.bookkeeper
-    if s_obj.is_constant():
+    if (isinstance(typ, type) and isinstance(s_obj.knowntype, type) and
+            is_unrelated_rpython_type(s_obj.knowntype, typ)):
+        r.const = False
+    elif s_obj.is_constant():
         r.const = isinstance(s_obj.const, typ)
     elif our_issubclass(bk, s_obj.knowntype, typ):
         if not s_obj.can_be_none():
             r.const = True
-    elif (not our_issubclass(bk, typ, s_obj.knowntype) or
-              is_other_machine_int(s_obj.knowntype, typ)):
+    elif not our_issubclass(bk, typ, s_obj.knowntype):
         r.const = False
     elif s_obj.knowntype == int and typ == bool: # xxx this will explode in case of generalisation
                                             # from bool to int, notice that isinstance( , bool|int)

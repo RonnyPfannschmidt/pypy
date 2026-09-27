@@ -716,7 +716,7 @@ r_singlefloat._TYPE = SingleFloat
 Char     = Primitive("Char", '\x00')
 Bool     = Primitive("Bool", False)
 Void     = Primitive("Void", None)
-UniChar  = Primitive("UniChar", u'\x00')
+UniChar  = Primitive("UniChar", unicode(u'\x00'))
 
 
 class Ptr(LowLevelType):

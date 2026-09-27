@@ -235,18 +235,31 @@ class Bookkeeper(object):
             else:
                 # XXX: better error reporting?
                 raise ValueError("seeing a prebuilt long (value %s)" % hex(x))
-        elif issubclass(tp, str): # py.lib uses annotated str subclasses
-            no_nul = not '\x00' in x
-            if len(x) == 1:
-                result = SomeChar(no_nul=no_nul)
-            else:
-                result = SomeString(no_nul=no_nul)
         elif tp is unicode:
             no_nul = not u'\x00' in x
             if len(x) == 1:
                 result = SomeUnicodeCodePoint(no_nul=no_nul)
             else:
                 result = SomeUnicodeString(no_nul=no_nul)
+        elif issubclass(tp, str): # py.lib uses annotated str subclasses
+            if x and max(x) > '\xff':
+                raise AnnotatorError(
+                    "the RPython str %r has characters beyond latin-1; "
+                    "mark it as unicode (see the flow space's text policy)"
+                    % (x,))
+            no_nul = not '\x00' in x
+            if len(x) == 1:
+                result = SomeChar(no_nul=no_nul)
+            else:
+                result = SomeString(no_nul=no_nul)
+        elif tp is bytes:
+            # Python 3 bytes, from host code like .encode() or struct.pack:
+            # an RPython str, one character per byte
+            no_nul = not b'\x00' in x
+            if len(x) == 1:
+                result = SomeChar(no_nul=no_nul)
+            else:
+                result = SomeString(no_nul=no_nul)
         elif tp is bytearray:
             result = SomeByteArray()
         elif tp is tuple:

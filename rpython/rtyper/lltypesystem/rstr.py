@@ -19,7 +19,7 @@ from rpython.rtyper.rstr import (AbstractStringRepr, AbstractCharRepr,
     AbstractUniCharRepr, AbstractStringIteratorRepr, AbstractLLHelpers,
     AbstractUnicodeRepr)
 from rpython.tool.sourcetools import func_with_new_name
-from rpython.tool.twothree import basestring
+from rpython.tool.twothree import basestring, str_from_bytes
 
 # ____________________________________________________________
 #
@@ -193,6 +193,8 @@ class BaseLLStringRepr(Repr):
         if value is None:
             return nullptr(self.lowleveltype.TO)
         #value = getattr(value, '__self__', value)  # for bound string methods
+        if isinstance(value, bytes) and bytes is not str:
+            value = str_from_bytes(value)   # host-made bytes on Python 3
         if not isinstance(value, self.basetype):
             raise TyperError("not a str: %r" % (value,))
         try:
