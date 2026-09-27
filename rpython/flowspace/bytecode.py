@@ -109,6 +109,11 @@ def _decode_free_variable(instr, code):
 
 @_decodes('CALL_INTRINSIC_1')
 def _decode_intrinsic(instr, code):
+    if instr.argrepr == 'INTRINSIC_STOPITERATION_ERROR':
+        # PEP 479 turns a StopIteration leaving a generator into a
+        # RuntimeError; RPython generators keep Python 2's semantics.  As
+        # a NOP, the handler around the generator body only re-raises.
+        return 'NOP', 0
     return instr.opname, instr.argrepr
 
 def _null_goes_first():
