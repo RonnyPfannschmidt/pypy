@@ -977,6 +977,31 @@ class FlowContext(object):
         else:
             op.simple_call(w_exitfunc, w_None, w_None, w_None).eval(self)
 
+    def BEFORE_WITH(self, oparg):
+        # as SETUP_WITH, but the exception table covers the block
+        w_manager = self.popvalue()
+        w_exit = op.getattr(w_manager, const("__exit__")).eval(self)
+        self.pushvalue(w_exit)
+        w_enter = op.getattr(w_manager, const('__enter__')).eval(self)
+        self.pushvalue(op.simple_call(w_enter).eval(self))
+
+    def LOAD_SPECIAL(self, name):
+        # the bound method and NULL, as LOAD_ATTR_PUSH_NULL
+        w_obj = self.popvalue()
+        self.pushvalue(op.getattr(w_obj, const(name)).eval(self))
+        self.PUSH_NULL(0)
+
+    def WITH_EXCEPT_START(self, exit_depth):
+        # Note: RPython context managers receive None in lieu of tracebacks
+        # and cannot suppress the exception.
+        w_exc = self.peekvalue().w_exc
+        w_exitfunc = self.peekvalue(exit_depth)
+        # The annotator won't allow to merge exception types with None.
+        # Replace it with the exception value...
+        op.simple_call(w_exitfunc, w_exc.w_value, w_exc.w_value, w_None
+                       ).eval(self)
+        self.pushvalue(w_None)
+
     def LOAD_FAST(self, varindex):
         w_value = self.locals_w[varindex]
         if w_value is None:

@@ -139,6 +139,20 @@ def _decode_common_constant(instr, code):
         return instr.opname, None
     return instr.opname, getattr(builtins, instr.argrepr)
 
+@_decodes('LOAD_SPECIAL')
+def _decode_load_special(instr, code):
+    # the argument indexes a table of special method names, which dis
+    # shows as argrepr
+    return instr.opname, instr.argrepr
+
+@_decodes('WITH_EXCEPT_START')
+def _decode_with_except_start(instr, code):
+    # below the exception, the previous exception and lasti: __exit__, and
+    # on 3.14, which loads it with LOAD_SPECIAL, its self or NULL
+    if 'LOAD_SPECIAL' in opcode.opmap:
+        return instr.opname, 4
+    return instr.opname, 3
+
 @_decodes('LOAD_GLOBAL')
 def _decode_load_global(instr, code):
     nameindex = code.co_names.index(instr.argval)
