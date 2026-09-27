@@ -847,6 +847,10 @@ class FlowContext(object):
         return jumpto
     JUMP_BACKWARD = JUMP_BACKWARD_NO_INTERRUPT = JUMP_ABSOLUTE
 
+    def RETURN_GENERATOR(self, oparg):
+        # the generator object, which POP_TOP drops again
+        self.pushvalue(w_None)
+
     def YIELD_VALUE(self, _):
         assert self.pycode.is_generator
         w_result = self.popvalue()
