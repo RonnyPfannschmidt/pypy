@@ -77,7 +77,7 @@ def remember_free(obj):
         # Slow path: the object may be freed through a different wrapper of
         # the same allocation than the one that was remembered (e.g. a
         # render_as_const cast in cpyext).  Fall back to an equality scan.
-        for key, (o, tb) in ALLOCATED.items():
+        for key, (o, tb) in list(ALLOCATED.items()):
             try:
                 match = o is obj or o == obj
             except Exception:
