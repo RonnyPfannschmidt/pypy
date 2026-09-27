@@ -106,6 +106,83 @@ def _decode_free_variable(instr, code):
     return instr.opname, code.co_freevars.index(instr.argval)
 
 
+@_decodes('CALL_INTRINSIC_1')
+def _decode_intrinsic(instr, code):
+    return instr.opname, instr.argrepr
+
+def _null_goes_first():
+    """Whether the host puts the NULL of a call below the callable (3.11
+    and 3.12) or above it (3.13+)."""
+    for instr in dis.get_instructions((lambda f: f()).__code__):
+        if instr.opname == 'PUSH_NULL':
+            return True
+        if instr.opname.startswith('LOAD_FAST'):
+            return False
+
+if HAS_GET_INSTRUCTIONS:
+    NULL_GOES_FIRST = _null_goes_first()
+
+@_decodes('LOAD_GLOBAL')
+def _decode_load_global(instr, code):
+    nameindex = code.co_names.index(instr.argval)
+    if dis.stack_effect(instr.opcode, instr.arg) == 2:
+        # 3.11+ flag bit: push a NULL for CALL as well
+        if NULL_GOES_FIRST:
+            return 'PUSH_NULL_LOAD_GLOBAL', nameindex
+        return 'LOAD_GLOBAL_PUSH_NULL', nameindex
+    return instr.opname, nameindex
+
+@_decodes('LOAD_ATTR')
+def _decode_load_attr(instr, code):
+    nameindex = code.co_names.index(instr.argval)
+    if dis.stack_effect(instr.opcode, instr.arg) == 1:
+        # 3.12+ flag bit: a method lookup for CALL.  The flow space pushes
+        # the bound method and NULL, in the host's order.
+        if NULL_GOES_FIRST:
+            return 'PUSH_NULL_LOAD_ATTR', nameindex
+        return 'LOAD_ATTR_PUSH_NULL', nameindex
+    return instr.opname, nameindex
+
+
+class Instruction(object):
+    """A decoded instruction: the handler's name and argument, and what
+    the fusing passes need to know about the host instruction."""
+
+    def __init__(self, instr, code):
+        self.offset = instr.offset
+        self.opname, self.oparg = _normalize(instr, code)
+        self.host = instr
+
+    def stack_effect(self):
+        return dis.stack_effect(self.host.opcode, self.host.arg)
+
+    def is_host(self, opname, arg=None):
+        return (self.host.opname == opname and
+                (arg is None or self.host.arg == arg))
+
+    def replace(self, opname, oparg=0):
+        self.opname = opname
+        self.oparg = oparg
+
+
+def _operands_start(instrs, index, count, jump_targets):
+    """Index of the first instruction computing the 'count' values that
+    instrs[index] consumes, or None if they are not straight-line code."""
+    depth = 0
+    i = index
+    while depth < count:
+        i -= 1
+        if i < 0:
+            return None
+        instr = instrs[i]
+        if instr.host.opcode in JUMP_OPCODES or instr.offset in jump_targets:
+            return None
+        depth += instr.stack_effect()
+    if depth != count:
+        return None
+    return i
+
+
 # Python 3.12+ compiles del x[a:b], and 3.14 also x[a:b], to a
 # BUILD_SLICE that the next instruction consumes.  RPython has no slice
 # objects, so the pair decodes as the slice operation of Python 2.
@@ -116,6 +193,86 @@ _SLICE_OPERATIONS = {
     ('DELETE_SUBSCR', 0): 'DELETE_SLICE_3',
 }
 
+def _fuse_slice(instrs, i, jump_targets):
+    instr = instrs[i]
+    if instr.is_host('BUILD_SLICE', 2) and i + 1 < len(instrs):
+        following = instrs[i + 1]
+        opname = _SLICE_OPERATIONS.get((following.opname, following.oparg))
+        if opname is not None:
+            instr.replace('NOP')
+            following.replace(opname)
+
+def _fuse_constant_list(instrs, i, jump_targets):
+    # [1, 2, 3] is BUILD_LIST 0, LOAD_CONST (1, 2, 3), LIST_EXTEND 1
+    if (instrs[i].is_host('LIST_EXTEND', 1) and i >= 2 and
+            instrs[i - 1].is_host('LOAD_CONST') and
+            instrs[i - 2].is_host('BUILD_LIST', 0) and
+            instrs[i - 1].offset not in jump_targets and
+            instrs[i].offset not in jump_targets):
+        instrs[i].replace('BUILD_LIST_FROM_CONST', instrs[i - 1].oparg)
+        instrs[i - 1].replace('NOP')
+        instrs[i - 2].replace('NOP')
+
+def _fuse_keyword_names(instrs, i, jump_targets):
+    # 3.12: KW_NAMES sets the keyword names of the CALL that follows it.
+    # Load them instead, which is how CALL_KW of 3.13+ expects them.
+    instr = instrs[i]
+    if instr.is_host('KW_NAMES'):
+        instr.replace('LOAD_CONST', instr.oparg)
+        assert instrs[i + 1].opname == 'CALL'
+        instrs[i + 1].replace('CALL_KW', instrs[i + 1].oparg)
+
+def _fuse_star_call(instrs, i, jump_targets):
+    """f(a, *args, k=v) builds a list, extends it with args, converts it
+    to a tuple, builds a dict of the keywords and calls
+    CALL_FUNCTION_EX.  RPython has a fixed number of arguments and
+    keywords, so the builders become NOPs that leave the values on the
+    stack, and CALL_FUNCTION_EX gets their number:
+    (positional count, keyword count or None, whether there is a
+    keyword slot).  Anything else stays as it is, and fails where the
+    handlers find a list or dict that they cannot unpack.
+    """
+    call = instrs[i]
+    if not call.is_host('CALL_FUNCTION_EX'):
+        return
+    # the callable, NULL or self, the arguments and on 3.14 or with
+    # keywords, their dict or NULL
+    has_kwslot = 1 - call.stack_effect() == 4
+    n_keywords = None
+    star_end = i - 1
+    if has_kwslot:
+        builder = instrs[i - 1]
+        if builder.is_host('BUILD_MAP') and builder.offset not in jump_targets:
+            start = _operands_start(instrs, i - 1, 2 * builder.oparg,
+                                    jump_targets)
+            if start is not None:
+                n_keywords = builder.oparg
+                builder.replace('NOP')
+                star_end = start - 1
+        else:
+            start = _operands_start(instrs, i, 1, jump_targets)
+            if start is None:
+                return
+            star_end = start - 1
+    n_positional = 0
+    if (star_end >= 1 and
+            instrs[star_end].is_host('CALL_INTRINSIC_1') and
+            instrs[star_end].host.argrepr == 'INTRINSIC_LIST_TO_TUPLE' and
+            instrs[star_end - 1].is_host('LIST_EXTEND', 1)):
+        extend = star_end - 1
+        start = _operands_start(instrs, extend, 1, jump_targets)
+        if (start is not None and start >= 1 and
+                instrs[start - 1].is_host('BUILD_LIST') and
+                instrs[start].offset not in jump_targets):
+            n_positional = instrs[start - 1].oparg
+            for j in (start - 1, extend, star_end):
+                instrs[j].replace('NOP')
+    call.replace('CALL_FUNCTION_EX', (n_positional, n_keywords, has_kwslot))
+
+_FUSING_PASSES = [_fuse_slice, _fuse_constant_list, _fuse_keyword_names,
+                  _fuse_star_call]
+
+
 def decode_instructions(code):
     """Decode a host code object with the dis module (Python 3 hosts).
 
@@ -125,29 +282,40 @@ def decode_instructions(code):
     exception entries are (start, end, target, depth, lasti) tuples, with
     'end' exclusive, from the exception table of CPython 3.11 and later.
     """
-    instrs = list(dis.get_instructions(code))
-    table = {}
-    next_offset = len(code.co_code)
-    decoded = None
-    for instr in reversed(instrs):
+    instrs = []
+    prefixes = {}     # EXTENDED_ARG offset -> offset of its instruction
+    pending = []
+    for instr in dis.get_instructions(code):
         if instr.opname == 'EXTENDED_ARG':
             # dis already folded the prefix into the argument of the
             # instruction that follows; jumps may still target the prefix
-            table[instr.offset] = decoded
-        else:
-            opname, oparg = _normalize(instr, code)
-            if opname == 'BUILD_SLICE' and oparg == 2 and decoded is not None:
-                slice_opname = _SLICE_OPERATIONS.get(decoded[1:])
-                if slice_opname is not None:
-                    table[next_offset] = (decoded[0], slice_opname, 0)
-                    opname = 'NOP'
-            decoded = (next_offset, opname, oparg)
-            table[instr.offset] = decoded
-        next_offset = instr.offset
+            pending.append(instr.offset)
+            continue
+        for offset in pending:
+            prefixes[offset] = instr.offset
+        pending = []
+        instrs.append(Instruction(instr, code))
     bytecode = dis.Bytecode(code)
     exception_entries = tuple(
         (entry.start, entry.end, entry.target, entry.depth, entry.lasti)
         for entry in getattr(bytecode, 'exception_entries', ()))
+    jump_targets = set(instr.oparg for instr in instrs
+                       if instr.host.opcode in JUMP_OPCODES)
+    jump_targets.update(entry[2] for entry in exception_entries)
+    jump_targets = set(prefixes.get(target, target)
+                       for target in jump_targets)
+    for fuse in _FUSING_PASSES:
+        for i in range(len(instrs)):
+            fuse(instrs, i, jump_targets)
+    table = {}
+    for i, instr in enumerate(instrs):
+        if i + 1 < len(instrs):
+            next_offset = instrs[i + 1].offset
+        else:
+            next_offset = len(code.co_code)
+        table[instr.offset] = (next_offset, instr.opname, instr.oparg)
+    for prefix, offset in prefixes.items():
+        table[prefix] = table[offset]
     return table, exception_entries
 
 
