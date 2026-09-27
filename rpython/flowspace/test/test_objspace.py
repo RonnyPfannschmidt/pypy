@@ -109,9 +109,10 @@ class TestFlowObjSpace(Base):
 
     def test_loop(self):
         graph = self.codetest(self.loop)
-        assert self.all_operations(graph) == {'abs': 1,
-                                              'bool': 1,
-                                              'sub': 1}
+        ops = self.all_operations(graph)
+        # 3.12 and 3.13 test the condition at the loop's end once more
+        assert ops.pop('bool') in (1, 2)
+        assert ops == {'abs': 1, 'sub': 1}
 
     #__________________________________________________________
     def print_(i):
