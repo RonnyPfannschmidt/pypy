@@ -6,6 +6,7 @@ import opcode
 from opcode import EXTENDED_ARG, HAVE_ARGUMENT
 from rpython.tool.stdlib_opcode import host_bytecode_spec
 from rpython.flowspace.argument import Signature
+from rpython.tool.twothree import builtins
 
 try:
     from __pypy__ import _promote
@@ -121,6 +122,22 @@ def _null_goes_first():
 
 if HAS_GET_INSTRUCTIONS:
     NULL_GOES_FIRST = _null_goes_first()
+
+@_decodes('RAISE_VARARGS')
+def _decode_raise(instr, code):
+    # with two arguments: raise exc from cause, not Python 2's type, value
+    return 'RAISE_VARARGS_FROM', instr.arg
+
+@_decodes('LOAD_COMMON_CONSTANT')
+def _decode_common_constant(instr, code):
+    # the argument indexes a table of constants, which dis keeps privately
+    # and names in argrepr
+    table = getattr(dis, '_common_constants', None)
+    if table is not None:
+        return instr.opname, table[instr.arg]
+    if instr.argrepr == 'None':
+        return instr.opname, None
+    return instr.opname, getattr(builtins, instr.argrepr)
 
 @_decodes('LOAD_GLOBAL')
 def _decode_load_global(instr, code):
@@ -319,6 +336,10 @@ def decode_instructions(code):
     return table, exception_entries
 
 
+_CLEANUP_OPNAMES = frozenset(['NOP', 'COPY', 'SWAP', 'POP_TOP', 'POP_EXCEPT',
+                              'LOAD_CONST', 'STORE_FAST', 'DELETE_FAST'])
+
+
 class HostCode(object):
     """
     A wrapper around a native code object of the host interpreter
@@ -369,6 +390,41 @@ class HostCode(object):
                    list(code.co_freevars),
                    instructions,
                    exception_entries)
+
+    def exception_handler(self, offset):
+        """The exception table entry that handles an exception at offset"""
+        for entry in self.exception_entries:
+            start, end = entry[0], entry[1]
+            if start <= offset < end:
+                return entry
+        return None
+
+    def catches(self, offset):
+        """Whether an exception at offset reaches an exception table
+        handler that does more than clean up and re-raise it.
+
+        Python 3.11+ cleans up after comprehensions and 'except ... as'
+        in handlers of their own.  Counting those would make the flow
+        space catch implicit exceptions that Python 2 hosts do not.
+        """
+        entry = self.exception_handler(offset)
+        if entry is None:
+            return False
+        reraise = self._cleanup_reraise(entry[2])
+        if reraise is None:
+            return True
+        return self.catches(reraise)
+
+    def _cleanup_reraise(self, offset):
+        """The offset of the RERAISE ending the handler at offset, if the
+        handler does nothing else than clean up"""
+        while True:
+            next_offset, opname, _ = self.read(offset)
+            if opname == 'RERAISE':
+                return offset
+            if opname not in _CLEANUP_OPNAMES:
+                return None
+            offset = next_offset
 
     @property
     def formalargcount(self):

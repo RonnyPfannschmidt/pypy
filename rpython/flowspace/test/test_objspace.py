@@ -833,6 +833,29 @@ class TestFlowObjSpace(Base):
         assert len(graph.startblock.exits) == 1
         assert graph.startblock.exits[0].target is graph.returnblock
 
+    def test_assert_raises_assertionerror(self):
+        # exec: the assertion rewriting of the test module must not see it
+        namespace = {}
+        exec("def f(x):\n    assert x\n", namespace)
+        graph = build_flow(namespace['f'])
+        simplify_graph(graph)
+        [call] = [op for block in graph.iterblocks()
+                  for op in block.operations if op.opname == 'simple_call']
+        assert call.args == [Constant(AssertionError)]
+
+    def test_implicit_exception_in_except_body_is_not_caught(self):
+        def f(x, lst):
+            try:
+                x()
+            except ValueError as e:
+                return lst[0]
+            return 0
+        graph = self.codetest(f)
+        for block in graph.iterblocks():
+            for op in block.operations:
+                if op.opname == 'getitem':
+                    assert not block.canraise
+
     def test_importerror_1(self):
         def f():
             import rpython.this_does_not_exist
@@ -880,6 +903,8 @@ class TestFlowObjSpace(Base):
         graph = self.codetest(myfunc)
         assert graph.startblock.exits[0].target is graph.returnblock
 
+    @py.test.mark.xfail(HAS_GET_INSTRUCTIONS, reason="str is unicode on "
+                        "Python 3; the str/unicode dialect is undecided")
     def test_unicode(self):
         def myfunc(n):
             try:
