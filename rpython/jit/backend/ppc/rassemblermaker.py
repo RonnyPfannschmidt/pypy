@@ -31,7 +31,7 @@ def make_func(name, desc):
             sig.append(field.name)
             fieldvalues.append((field, field.name))
     if isinstance(desc, IDupDesc):
-        for destfield, srcfield in desc.dupfields.iteritems():
+        for destfield, srcfield in desc.dupfields.items():
             fieldvalues.append((destfield, srcfield.name))
     body = ['v = r_uint(0)']
     assert 'v' not in sig # that wouldn't be funny
