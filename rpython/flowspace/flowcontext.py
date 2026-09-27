@@ -780,6 +780,7 @@ class FlowContext(object):
 
     def JUMP_ABSOLUTE(self, jumpto):
         return jumpto
+    JUMP_BACKWARD = JUMP_BACKWARD_NO_INTERRUPT = JUMP_ABSOLUTE
 
     def YIELD_VALUE(self, _):
         assert self.pycode.is_generator
@@ -826,6 +827,16 @@ class FlowContext(object):
         if self.guessbool(op.bool(w_value).eval(self)):
             return target
 
+    def POP_JUMP_IF_NONE(self, target):
+        w_value = self.popvalue()
+        if self.guessbool(op.is_(w_value, w_None).eval(self)):
+            return target
+
+    def POP_JUMP_IF_NOT_NONE(self, target):
+        w_value = self.popvalue()
+        if not self.guessbool(op.is_(w_value, w_None).eval(self)):
+            return target
+
     def JUMP_IF_FALSE_OR_POP(self, target):
         w_value = self.peekvalue()
         if not self.guessbool(op.bool(w_value).eval(self)):
@@ -853,6 +864,19 @@ class FlowContext(object):
         w_nextitem = op.next(w_iterator).eval(self)
         self.blockstack.pop()
         self.pushvalue(w_nextitem)
+
+    def FOR_ITER_TO_END_FOR(self, target):
+        w_iterator = self.peekvalue()
+        self.blockstack.append(IterToEndForBlock(self, target))
+        w_nextitem = op.next(w_iterator).eval(self)
+        self.blockstack.pop()
+        self.pushvalue(w_nextitem)
+
+    def END_FOR(self, count):
+        self.popvalues(count)
+
+    def POP_ITER(self, oparg):
+        self.popvalue()
 
     def SETUP_LOOP(self, target):
         block = LoopBlock(self, target)
@@ -1503,6 +1527,17 @@ class IterBlock(ExceptBlock):
         w_exc = unroller.w_exc
         if ctx.exception_match(w_exc.w_type, const(StopIteration)):
             ctx.popvalue()
+            return self.handlerposition
+        else:
+            return ctx.unroll(unroller)
+
+class IterToEndForBlock(ExceptBlock):
+    """IterBlock of the hosts whose exhausted FOR_ITER leaves the iterator
+    on the stack: END_FOR pops it together with a placeholder value"""
+    def handle(self, ctx, unroller):
+        w_exc = unroller.w_exc
+        if ctx.exception_match(w_exc.w_type, const(StopIteration)):
+            ctx.pushvalue(w_None)
             return self.handlerposition
         else:
             return ctx.unroll(unroller)
