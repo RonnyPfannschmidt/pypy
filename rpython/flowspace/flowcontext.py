@@ -838,9 +838,24 @@ class FlowContext(object):
             raise FlowingError("Local variable referenced before assignment")
         self.pushvalue(w_value)
 
+    LOAD_FAST_CHECK = LOAD_FAST
+    LOAD_FAST_BORROW = LOAD_FAST
+
+    def LOAD_FAST_LOAD_FAST(self, varindices):
+        first, second = varindices
+        self.LOAD_FAST(first)
+        self.LOAD_FAST(second)
+    LOAD_FAST_BORROW_LOAD_FAST_BORROW = LOAD_FAST_LOAD_FAST
+
     def LOAD_CONST(self, constindex):
         w_const = self.getconstant_w(constindex)
         self.pushvalue(w_const)
+
+    def LOAD_SMALL_INT(self, value):
+        self.pushvalue(const(value))
+
+    def RETURN_CONST(self, constindex):
+        raise Return(self.getconstant_w(constindex))
 
     def find_global(self, w_globals, varname):
         try:
@@ -882,6 +897,16 @@ class FlowContext(object):
         self.locals_w[varindex] = w_newvalue
         if isinstance(w_newvalue, Variable):
             w_newvalue.rename(self.getlocalvarname(varindex))
+
+    def STORE_FAST_LOAD_FAST(self, varindices):
+        store, load = varindices
+        self.STORE_FAST(store)
+        self.LOAD_FAST(load)
+
+    def STORE_FAST_STORE_FAST(self, varindices):
+        first, second = varindices
+        self.STORE_FAST(first)
+        self.STORE_FAST(second)
 
     def STORE_GLOBAL(self, nameindex):
         varname = self.getname_u(nameindex)
@@ -927,6 +952,18 @@ class FlowContext(object):
                 break
             w_value = self.peekvalue(delta)
             self.pushvalue(w_value)
+
+    def COPY(self, index):
+        self.pushvalue(self.peekvalue(index - 1))
+
+    def SWAP(self, index):
+        w_top = self.peekvalue()
+        self.settopvalue(self.peekvalue(index - 1))
+        self.settopvalue(w_top, index - 1)
+
+    def PUSH_NULL(self, oparg):
+        # the NULL of the Python 3.11+ calling convention, see CALL
+        self.pushvalue(None)
 
     for OPCODE, op in _unary_ops:
         locals()[OPCODE] = unaryoperation(OPCODE, op)
@@ -1176,6 +1213,9 @@ class FlowContext(object):
 
     def NOP(self, *args):
         pass
+    # interpreter bookkeeping of CPython 3.11+: the flow space takes the
+    # free variables from the function's closure (see LOAD_DEREF)
+    RESUME = NOT_TAKEN = COPY_FREE_VARS = NOP
 
     # XXX Unimplemented 2.7 opcodes ----------------
 
