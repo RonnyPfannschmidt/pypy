@@ -996,7 +996,7 @@ class AbstractLLHelpers(object):
         curstr = ''
         for c in it:
             if c == '%':
-                f = it.next()
+                f = next(it)
                 if f == '%':
                     curstr += '%'
                     continue
