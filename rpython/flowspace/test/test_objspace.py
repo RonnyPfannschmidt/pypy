@@ -799,6 +799,13 @@ class TestFlowObjSpace(Base):
         assert shapes == [(1, (), True), (1, ('k',), True), (0, ('k',), True),
                           (1, (), True)]
 
+    def test_comprehension_variable_stays_unbound(self):
+        def f(xs):
+            lst = [x + 1 for x in xs]
+            return x
+        with py.test.raises(FlowingError):
+            self.codetest(f)
+
     def test_dict_literals(self):
         def f(a, b):
             return {'a': a, 'b': b}, {a: b}
@@ -1351,9 +1358,11 @@ class TestFlowObjSpace(Base):
         def f(iterable):
             return [5 for x in iterable]
         graph = self.codetest(f)
-        assert self.all_operations(graph) == {'getattr': 1,
-                                              'iter': 1, 'newlist': 1,
-                                              'next': 1, 'simple_call': 1}
+        ops = self.all_operations(graph)
+        # 3.13 calls GET_ITER on the iterator once more
+        assert ops.pop('iter') in (1, 2)
+        assert ops == {'getattr': 1, 'newlist': 1, 'next': 1,
+                       'simple_call': 1}
 
     def test_mutate_const_list(self):
         lst = list('abcdef')
