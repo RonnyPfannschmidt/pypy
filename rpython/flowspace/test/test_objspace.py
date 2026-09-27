@@ -779,7 +779,33 @@ class TestFlowObjSpace(Base):
         for block in graph.iterblocks():
             for op in block.operations:
                 assert op.opname == "call_args"
-                assert op.args == map(Constant, [g, (0, ('x',), False), 2])
+                assert op.args == [Constant(g), Constant((0, ('x',), False)),
+                                   Constant(2)]
+
+    def test_star_call_shapes(self):
+        def g(*args, **kwds):
+            return args
+        class A:
+            def m(self, *args):
+                return args
+        def f(x, args):
+            g(x, *args)
+            g(x, *args, k=x)
+            g(*args, k=x)
+            A().m(x, *args)
+        graph = self.codetest(f)
+        shapes = [op.args[1].value for block in graph.iterblocks()
+                  for op in block.operations if op.opname == 'call_args']
+        assert shapes == [(1, (), True), (1, ('k',), True), (0, ('k',), True),
+                          (1, (), True)]
+
+    def test_constant_list_literal(self):
+        def f():
+            return [1, 2, 3]
+        graph = self.codetest(f)
+        [op] = [op for block in graph.iterblocks() for op in block.operations]
+        assert op.opname == 'newlist'
+        assert op.args == [Constant(1), Constant(2), Constant(3)]
 
     def test_catch_importerror_1(self):
         def f():
