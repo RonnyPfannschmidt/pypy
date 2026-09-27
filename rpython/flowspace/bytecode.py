@@ -85,6 +85,19 @@ def _decode_comparison(instr, code):
 def _decode_binary_operator(instr, code):
     return instr.opname, instr.argrepr
 
+@_decodes('FOR_ITER')
+def _decode_for_iter(instr, code):
+    if dis.stack_effect(instr.opcode, instr.arg, jump=True) > 0:
+        # 3.12+: an exhausted iterator stays on the stack, and the jump
+        # lands on END_FOR, which pops it with a placeholder above it
+        return 'FOR_ITER_TO_END_FOR', instr.argval
+    return instr.opname, instr.argval
+
+@_decodes('END_FOR')
+def _decode_end_for(instr, code):
+    # END_FOR pops two values on 3.12, one on 3.13+
+    return instr.opname, -dis.stack_effect(instr.opcode)
+
 @_decodes('LOAD_DEREF', 'STORE_DEREF', 'DELETE_DEREF', 'LOAD_CLOSURE')
 def _decode_free_variable(instr, code):
     # Python 3.11+ numbers these across locals, cells and free variables.
