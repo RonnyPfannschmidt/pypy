@@ -1,7 +1,8 @@
 from __future__ import print_function
 
 import os
-import urllib2, py
+import py
+from rpython.tool.twothree import urlopen
 from os.path import join
 
 RVMPROF = py.path.local(__file__).join('..', '..')
@@ -32,7 +33,7 @@ def test_same_file():
     for file in files:
         path = file.relto(shared)
         url = github_raw_file("vmprof/vmprof-python", "src/%s" % path)
-        source = urllib2.urlopen(url).read()
+        source = urlopen(url).read()
         dest = file.read()
         shortname = file.relto(RVMPROF)
         if source == dest:
