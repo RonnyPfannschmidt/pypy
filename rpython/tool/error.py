@@ -159,6 +159,12 @@ def debug(drv, use_pdb=True):
 
 @jit.elidable
 def offset2lineno(c, stopat):
+    if hasattr(c, 'co_lines'):
+        # co_lnotab is deprecated since Python 3.12 and gone in 3.15
+        for start, end, line in c.co_lines():
+            if start <= stopat < end and line is not None:
+                return line
+        return c.co_firstlineno
     # even position in lnotab denote byte increments, odd line increments.
     # see dis.findlinestarts in the python std. library for more details
     tab = c.co_lnotab
