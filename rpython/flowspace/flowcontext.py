@@ -1490,6 +1490,31 @@ class FlowContext(object):
         w_dict = op.newdict().eval(self)
         self.pushvalue(w_dict)
 
+    def newdict(self, keys_w, values_w):
+        w_dict = op.newdict().eval(self)
+        for w_key, w_value in zip(keys_w, values_w):
+            op.setitem(w_dict, w_key, w_value).eval(self)
+        return w_dict
+
+    def BUILD_MAP_FROM_ITEMS(self, itemcount):
+        items = self.popvalues(2 * itemcount)
+        self.pushvalue(self.newdict(items[0::2], items[1::2]))
+
+    def BUILD_CONST_KEY_MAP(self, itemcount):
+        w_keys = self.popvalue()
+        values_w = self.popvalues(itemcount)
+        keys_w = [const(key) for key in w_keys.value]
+        self.pushvalue(self.newdict(keys_w, values_w))
+
+    def MAP_ADD_KEY_VALUE(self, oparg):
+        w_value = self.popvalue()
+        w_key = self.popvalue()
+        w_dict = self.peekvalue(oparg - 1)
+        op.setitem(w_dict, w_key, w_value).eval(self)
+
+    def DICT_UPDATE(self, oparg):
+        raise FlowingError("Dict-unpacking is not RPython")
+
     def NOP(self, *args):
         pass
     # interpreter bookkeeping of CPython 3.11+: the flow space takes the

@@ -153,6 +153,17 @@ def _decode_with_except_start(instr, code):
         return instr.opname, 4
     return instr.opname, 3
 
+@_decodes('BUILD_MAP')
+def _decode_build_map(instr, code):
+    # Python 3 pops that many key-value pairs; Python 2 pushes an empty
+    # dict of that size and fills it with STORE_MAP
+    return 'BUILD_MAP_FROM_ITEMS', instr.arg
+
+@_decodes('MAP_ADD')
+def _decode_map_add(instr, code):
+    # the key below the value since 3.8, the other way round on Python 2
+    return 'MAP_ADD_KEY_VALUE', instr.arg
+
 @_decodes('LOAD_GLOBAL')
 def _decode_load_global(instr, code):
     nameindex = code.co_names.index(instr.argval)
