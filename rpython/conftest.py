@@ -1,9 +1,14 @@
+import sys
 import py, pytest
 from rpython.tool import leakfinder
 
 pytest_plugins = 'rpython.tool.pytest.expecttest'
 
 option = None
+
+if sys.version_info[0] >= 3:
+    # Python 2 syntax on purpose: the host cannot even parse them
+    collect_ignore_glob = ['*_py2.py']
 
 try:
     from hypothesis import settings
