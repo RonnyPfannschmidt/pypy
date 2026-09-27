@@ -42,3 +42,23 @@ class TestFlowObjSpacePy3(Base):
         [link] = [link for link in graph.iterlinks()
                   if link.target is graph.returnblock]
         assert link.args == [Constant(5)]
+
+    def test_percent_formatting(self):
+        # compiled to f-string instructions since 3.12
+        def f(x, y):
+            return 'a %s b %r' % (x, y)
+        graph = self.codetest(f)
+        ops = self.all_operations(graph)
+        assert ops == {'str': 1, 'repr': 1, 'add': 3}
+
+    def test_fstring(self):
+        def f(x):
+            return f'{x}!{x!r}'
+        graph = self.codetest(f)
+        assert self.all_operations(graph) == {'str': 1, 'repr': 1, 'add': 2}
+
+    def test_fstring_format_spec(self):
+        def f(x):
+            return f'{x:>3}'
+        with py.test.raises(FlowingError):
+            self.codetest(f)

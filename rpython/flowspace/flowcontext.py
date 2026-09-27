@@ -292,11 +292,7 @@ _unsupported_ops = [
     ('DELETE_DEREF', 'closures'),
     ('UNPACK_EX', 'starred assignment'),
     ('SET_UPDATE', 'set displays'),
-    ('BUILD_STRING', 'f-strings'),
-    ('FORMAT_VALUE', 'f-strings'),
-    ('FORMAT_SIMPLE', 'f-strings'),
-    ('FORMAT_WITH_SPEC', 'f-strings'),
-    ('CONVERT_VALUE', 'f-strings'),
+    ('FORMAT_WITH_SPEC', 'format specs in f-strings'),
     ('BUILD_INTERPOLATION', 't-strings'),
     ('BUILD_TEMPLATE', 't-strings'),
     ('GET_LEN', 'match'),
@@ -322,6 +318,11 @@ def unsupportedoperation(OPCODE, msg):
         raise FlowingError("%s is not RPython" % (msg,))
     UNSUPPORTED.__name__ = OPCODE
     return UNSUPPORTED
+
+# the conversions of FORMAT_VALUE (3.12) and CONVERT_VALUE (3.13+)
+CONVERSION_STR = 1
+CONVERSION_REPR = 2
+CONVERSION_ASCII = 3
 
 # the flags of MAKE_FUNCTION (3.12) and SET_FUNCTION_ATTRIBUTE (3.13+)
 FUNCTION_DEFAULTS = 0x01
@@ -1565,6 +1566,38 @@ class FlowContext(object):
         w_list = self.peekvalue(oparg - 1)
         w_extend = op.getattr(w_list, const('extend')).eval(self)
         op.simple_call(w_extend, w_iterable).eval(self)
+
+    # f-strings, and '%s' % x, which the compiler turns into one since 3.12
+
+    def convert_value(self, w_value, conversion):
+        if conversion == CONVERSION_REPR:
+            return op.repr(w_value).eval(self)
+        if conversion == CONVERSION_ASCII:
+            raise FlowingError("ascii() is not RPython")
+        return op.str(w_value).eval(self)
+
+    def FORMAT_VALUE(self, flags):
+        # 3.12: the conversion and whether a format spec is on the stack
+        if flags & 0x04:
+            raise FlowingError("format specs in f-strings are not RPython")
+        w_value = self.popvalue()
+        self.pushvalue(self.convert_value(w_value, flags & 0x03))
+
+    def CONVERT_VALUE(self, conversion):
+        self.pushvalue(self.convert_value(self.popvalue(), conversion))
+
+    def FORMAT_SIMPLE(self, oparg):
+        self.pushvalue(op.str(self.popvalue()).eval(self))
+
+    def BUILD_STRING(self, count):
+        pieces_w = self.popvalues(count)
+        if not pieces_w:
+            self.pushvalue(const(''))
+            return
+        w_result = pieces_w[0]
+        for w_piece in pieces_w[1:]:
+            w_result = op.add(w_result, w_piece).eval(self)
+        self.pushvalue(w_result)
 
     def DICT_MERGE(self, oparg):
         raise FlowingError("Dict-unpacking is not RPython")
