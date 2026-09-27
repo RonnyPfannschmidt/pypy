@@ -76,8 +76,7 @@ class SomeObject(with_metaclass(extendabletype, object)):
         else:
             reprdict[self] = True
             try:
-                items = self.__dict__.items()
-                items.sort()
+                items = sorted(self.__dict__.items())
                 args = []
                 for k, v in items:
                     m = getattr(self, 'fmt_' + k, repr)
