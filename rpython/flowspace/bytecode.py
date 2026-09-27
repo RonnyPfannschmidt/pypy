@@ -413,7 +413,32 @@ def decode_instructions(code, consts, text_policy):
         table[instr.offset] = (next_offset, instr.opname, instr.oparg)
     for prefix, offset in prefixes.items():
         table[prefix] = table[offset]
-    return table, exception_entries
+    return table, exception_entries, _assert_calls(instrs)
+
+
+def _is_assertion_error(instr):
+    return (instr.is_host('LOAD_ASSERTION_ERROR') or
+            instr.is_host('LOAD_COMMON_CONSTANT') and
+            instr.oparg is AssertionError)
+
+def _assert_calls(instrs):
+    """The offsets of the calls whose result an assert statement checks:
+    CALL, maybe TO_BOOL, POP_JUMP_IF_TRUE over the AssertionError."""
+    result = set()
+    for i, instr in enumerate(instrs):
+        if not _is_assertion_error(instr):
+            continue
+        j = i - 1
+        if j >= 0 and instrs[j].is_host('NOT_TAKEN'):
+            j -= 1
+        if j < 0 or not instrs[j].is_host('POP_JUMP_IF_TRUE'):
+            continue
+        j -= 1
+        if j >= 0 and instrs[j].is_host('TO_BOOL'):
+            j -= 1
+        if j >= 0 and instrs[j].is_host('CALL'):
+            result.add(instrs[j].offset)
+    return frozenset(result)
 
 
 _CLEANUP_OPNAMES = frozenset(['NOP', 'COPY', 'SWAP', 'POP_TOP', 'POP_EXCEPT',
@@ -430,7 +455,8 @@ class HostCode(object):
     def __init__(self, argcount, nlocals, stacksize, flags,
                  code, consts, names, varnames, filename,
                  name, firstlineno, freevars,
-                 instructions=None, exception_entries=()):
+                 instructions=None, exception_entries=(),
+                 assert_calls=frozenset()):
         """Initialize a new code object"""
         assert nlocals >= 0
         self.co_argcount = argcount
@@ -447,6 +473,7 @@ class HostCode(object):
         self.co_firstlineno = firstlineno
         self.instructions = instructions
         self.exception_entries = exception_entries
+        self.assert_calls = assert_calls
         self.signature = cpython_code_signature(self)
 
     @classmethod
@@ -455,10 +482,11 @@ class HostCode(object):
         """
         consts = list(code.co_consts)
         if HAS_GET_INSTRUCTIONS:
-            instructions, exception_entries = decode_instructions(
-                code, consts, text_policy)
+            instructions, exception_entries, assert_calls = (
+                decode_instructions(code, consts, text_policy))
         else:
-            instructions, exception_entries = None, ()
+            instructions, exception_entries, assert_calls = (
+                None, (), frozenset())
         return cls(code.co_argcount,
                    code.co_nlocals,
                    code.co_stacksize,
@@ -472,7 +500,8 @@ class HostCode(object):
                    code.co_firstlineno,
                    list(code.co_freevars),
                    instructions,
-                   exception_entries)
+                   exception_entries,
+                   assert_calls)
 
     def exception_handler(self, offset):
         """The exception table entry that handles an exception at offset"""

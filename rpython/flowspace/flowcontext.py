@@ -6,7 +6,7 @@ import collections
 import types
 
 from rpython.tool.error import source_lines
-from rpython.tool.twothree import builtins
+from rpython.tool.twothree import builtins, unicode
 from rpython.rlib import rstackovf
 from rpython.flowspace.argument import CallSpec
 from rpython.flowspace.model import (Constant, Variable, Block, Link,
@@ -362,6 +362,8 @@ class FlowContext(object):
         self.init_locals_stack(code)
 
         self.joinpoints = {}
+        # text that an assert isinstance(..., unicode) made unicode
+        self.narrowed_text = set()
 
     def init_closure(self, closure):
         if closure is None:
@@ -543,6 +545,21 @@ class FlowContext(object):
         block.closeblock(link)
         self.pendingblocks.append(newblock)
         return newblock
+
+    def narrow_to_unicode(self, w_text):
+        """An assert isinstance(w_text, unicode) about a text constant:
+        make it unicode in this frame, and in the loads of the same text
+        from globals later on.  Returns the unicode constant."""
+        w_unicode = Constant(unicode(w_text.value))
+        self.narrowed_text.add(w_text.value)
+        self.locals_w = [w_unicode if w == w_text else w
+                         for w in self.locals_w]
+        self.stack = [w_unicode if w == w_text else w for w in self.stack]
+        return w_unicode
+
+    def in_assertion(self):
+        """Whether the current instruction is the call an assert checks"""
+        return self.last_offset in self.pycode.assert_calls
 
     # hack for unrolling iterables, don't use this
     def replace_in_stack(self, oldvalue, newvalue):
@@ -1083,6 +1100,8 @@ class FlowContext(object):
             value = w_globals.value[varname]
             value = type_global(value, varname, policy_of(self.graph.func),
                                 w_globals.value)
+            if type(value) is str and value in self.narrowed_text:
+                value = unicode(value)
         except KeyError:
             # not in the globals, now look in the built-ins
             try:

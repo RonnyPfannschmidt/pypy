@@ -130,3 +130,50 @@ def test_unicode_literal_rtyped():
         s = u'\u20ac' + unichr(n)
         return len(s) * 1000 + ord(s[0]) - 0x20ac + ord(s[1])
     assert interpret(f, [65]) == 2065
+
+
+# ____________________________________________________________
+# assertions narrow text constants to unicode
+
+S_TEXT = 'text'
+
+def unrewritten(source):
+    """A function whose asserts the test module's assertion rewriting has
+    not seen"""
+    namespace = dict(globals())
+    exec(source, namespace)
+    return namespace['f']
+
+@py3_only
+def test_assert_narrows_local_constant():
+    f = text_policy('str')(unrewritten(
+        "def f():\n"
+        "    x = 'abc'\n"
+        "    assert isinstance(x, unicode)\n"
+        "    return x\n"))
+    assert isinstance(annotate(f, []), annmodel.SomeUnicodeString)
+
+@py3_only
+def test_assert_narrows_global():
+    f = unrewritten(
+        "def f():\n"
+        "    assert isinstance(S_TEXT, unicode)\n"
+        "    return S_TEXT\n")
+    assert isinstance(annotate(f, []), annmodel.SomeUnicodeString)
+
+def test_isinstance_outside_assert_does_not_narrow():
+    def f():
+        x = 'abc'
+        if isinstance(x, unicode):
+            return 1
+        return 2
+    s = annotate(f, [])
+    assert s.is_constant() and s.const == 2
+
+def test_assert_isinstance_str_stays_str():
+    f = unrewritten(
+        "def f():\n"
+        "    x = 'abc'\n"
+        "    assert isinstance(x, str)\n"
+        "    return x\n")
+    assert isinstance(annotate(f, []), annmodel.SomeString)

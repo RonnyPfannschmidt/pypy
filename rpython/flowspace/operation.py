@@ -17,7 +17,7 @@ from rpython.annotator.model import (
     SomeTuple, AnnotatorError, read_can_only_throw)
 from rpython.annotator.argument import ArgumentsForTranslation
 from rpython.flowspace.specialcase import SPECIAL_CASES
-from rpython.tool.twothree import long, unichr
+from rpython.tool.twothree import long, unichr, unicode
 
 
 NOT_REALLY_CONST = {
@@ -459,6 +459,26 @@ add_operator('type', 1, dispatch=1, pyfunc=new_style_type, pure=True)
 add_operator('issubtype', 2, dispatch=1, pyfunc=issubclass, pure=True)  # not for old-style classes
 add_operator('isinstance', 2, dispatch=1, pyfunc=isinstance, pure=True)
 add_operator('repr', 1, dispatch=1, pyfunc=repr, pure=True)
+
+def _eval_isinstance(self, ctx):
+    # On Python 3 hosts, 'assert isinstance(x, unicode)' about a text
+    # constant that the text policy made a str says that it is unicode
+    # (see textpolicy.py): the frame narrows it.  Outside an assert,
+    # isinstance() folds as usual, e.g. for type dispatch.
+    w_obj, w_cls = self.args
+    if (unicode is not str and isinstance(w_obj, Constant) and
+            type(w_obj.value) is str and isinstance(w_cls, Constant) and
+            _names_unicode(w_cls.value) and ctx.in_assertion()):
+        ctx.narrow_to_unicode(w_obj)
+        return const(True)
+    return HLOperation.eval(self, ctx)
+
+def _names_unicode(cls):
+    if isinstance(cls, tuple):
+        return unicode in cls and str not in cls
+    return cls is unicode
+
+op.isinstance.eval = _eval_isinstance
 add_operator('str', 1, dispatch=1, pyfunc=str, pure=True)
 add_operator('format', 2, pyfunc=unsupported)
 add_operator('len', 1, dispatch=1, pyfunc=len, pure=True)
