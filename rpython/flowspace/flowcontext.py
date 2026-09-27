@@ -1085,9 +1085,20 @@ class FlowContext(object):
             raise FlowingError("Undefined closure variable '%s'" % name)
         self.pushvalue(const(content))
 
+    def LOAD_FAST_AND_CLEAR(self, varindex):
+        # 3.12+ inlined comprehensions save their variable, which may be
+        # unbound (NULL), and STORE_FAST restores it afterwards
+        self.pushvalue(self.locals_w[varindex])
+        self.locals_w = self.locals_w[:]
+        self.locals_w[varindex] = None
+
     def STORE_FAST(self, varindex):
         w_newvalue = self.popvalue()
-        assert w_newvalue is not None
+        if w_newvalue is None:
+            # the NULL of LOAD_FAST_AND_CLEAR
+            self.locals_w = self.locals_w[:]
+            self.locals_w[varindex] = None
+            return
         if isinstance(w_newvalue, Raise):
             # except ... as name: of an exception table handler
             w_newvalue = w_newvalue.w_exc.w_value
