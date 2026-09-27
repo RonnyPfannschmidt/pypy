@@ -1081,6 +1081,17 @@ class TestFlowObjSpace(Base):
             return s[-3:]
         check(f3, 'llo')
 
+    def test_slice_operations(self):
+        def f(lst, i, j, x):
+            lst[1:] = x
+            lst[i:j] = x
+            del lst[:2]
+            del lst[i:j]
+            return lst[i:], lst[1:j]
+        graph = self.codetest(f)
+        assert self.all_operations(graph) == {
+            'setslice': 2, 'delslice': 2, 'getslice': 2, 'newtuple': 1}
+
     def test_constfold_attribute_error(self):
         def f(x):
             try:
