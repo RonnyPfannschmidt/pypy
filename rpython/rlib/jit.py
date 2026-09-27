@@ -889,7 +889,7 @@ class ExtEnterLeaveMarker(ExtRegistryEntry):
         if self.instance.__name__ == 'jit_merge_point':
             self.annotate_hooks(**kwds_s)
 
-        driver = self.instance.im_self
+        driver = self.instance.__self__
         keys = sorted(kwds_s.keys())
         expected = ['s_' + name for name in driver.greens + driver.reds
                                 if '.' not in name]
@@ -922,7 +922,7 @@ class ExtEnterLeaveMarker(ExtRegistryEntry):
         return annmodel.s_None
 
     def annotate_hooks(self, **kwds_s):
-        driver = self.instance.im_self
+        driver = self.instance.__self__
         h = self.annotate_hook
         h(driver.get_printable_location, driver.greens, **kwds_s)
         h(driver.get_location, driver.greens, **kwds_s)
@@ -952,7 +952,7 @@ class ExtEnterLeaveMarker(ExtRegistryEntry):
         # XXX to be complete, this could also check that the concretetype
         # of the variables are the same for each of the calls.
         from rpython.rtyper.lltypesystem import lltype
-        driver = self.instance.im_self
+        driver = self.instance.__self__
         greens_v = []
         reds_v = []
         for name in driver.greens:
@@ -1014,7 +1014,7 @@ class ExtLoopHeader(ExtRegistryEntry):
 
     def specialize_call(self, hop):
         from rpython.rtyper.lltypesystem import lltype
-        driver = self.instance.im_self
+        driver = self.instance.__self__
         hop.exception_cannot_occur()
         vlist = [hop.inputconst(lltype.Void, 'loop_header'),
                  hop.inputconst(lltype.Void, driver)]
