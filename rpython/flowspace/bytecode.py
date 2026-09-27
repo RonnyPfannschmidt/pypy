@@ -164,6 +164,15 @@ def _decode_map_add(instr, code):
     # the key below the value since 3.8, the other way round on Python 2
     return 'MAP_ADD_KEY_VALUE', instr.arg
 
+@_decodes('MAKE_FUNCTION')
+def _decode_make_function(instr, code):
+    if instr.arg is None:
+        # 3.13+: SET_FUNCTION_ATTRIBUTE sets the rest afterwards
+        return instr.opname, 0
+    # 3.12: the flags of SET_FUNCTION_ATTRIBUTE, all at once; not
+    # Python 2's number of defaults
+    return 'MAKE_FUNCTION_FLAGS', instr.arg
+
 @_decodes('LOAD_GLOBAL')
 def _decode_load_global(instr, code):
     nameindex = code.co_names.index(instr.argval)
