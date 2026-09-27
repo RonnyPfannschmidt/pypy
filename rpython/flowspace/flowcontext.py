@@ -290,6 +290,13 @@ def unsupportedoperation(OPCODE, msg):
     UNSUPPORTED.__name__ = OPCODE
     return UNSUPPORTED
 
+# the flags of MAKE_FUNCTION (3.12) and SET_FUNCTION_ATTRIBUTE (3.13+)
+FUNCTION_DEFAULTS = 0x01
+FUNCTION_KWDEFAULTS = 0x02
+FUNCTION_ANNOTATIONS = 0x04
+FUNCTION_CLOSURE = 0x08
+FUNCTION_ANNOTATE = 0x10
+
 compare_method = [
     "cmp_lt",   # "<"
     "cmp_le",   # "<="
@@ -1304,6 +1311,37 @@ class FlowContext(object):
         defaults = self.popvalues(numdefaults)
         fn = self.newfunction(w_codeobj, defaults)
         self.pushvalue(fn)
+
+    def set_function_attribute(self, w_function, flag, w_value):
+        """SET_FUNCTION_ATTRIBUTE of Python 3.13+, on the constant
+        function that MAKE_FUNCTION made."""
+        if flag == FUNCTION_DEFAULTS:
+            if not isinstance(w_value, Constant):
+                raise FlowingError("Dynamically created function must"
+                                   " have constant default values.")
+            defaults_w = [const(value) for value in w_value.value]
+            return self.newfunction(const(w_function.value.__code__),
+                                    defaults_w)
+        if flag in (FUNCTION_ANNOTATIONS, FUNCTION_ANNOTATE):
+            return w_function
+        if flag == FUNCTION_KWDEFAULTS:
+            raise FlowingError("keyword-only arguments are not RPython")
+        raise FlowingError("closures are not RPython")
+
+    def SET_FUNCTION_ATTRIBUTE(self, flag):
+        w_function = self.popvalue()
+        w_value = self.popvalue()
+        self.pushvalue(self.set_function_attribute(w_function, flag, w_value))
+
+    def MAKE_FUNCTION_FLAGS(self, flags):
+        # 3.12: code object on top, below it the values of the flags
+        w_function = self.newfunction(self.popvalue(), [])
+        for flag in (FUNCTION_CLOSURE, FUNCTION_ANNOTATIONS,
+                     FUNCTION_KWDEFAULTS, FUNCTION_DEFAULTS):
+            if flags & flag:
+                w_function = self.set_function_attribute(
+                    w_function, flag, self.popvalue())
+        self.pushvalue(w_function)
 
     def STORE_ATTR(self, nameindex):
         "obj.attributename = newvalue"
