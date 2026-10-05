@@ -1017,6 +1017,9 @@ class TestFlowObjSpace(Base):
         # 2 method calls: x.__enter__() and x.__exit__(None, None, None)
         assert self.all_operations(graph) == {'getattr': 2,
                                               'simple_call': 2}
+        names = set(op.args[1].value for block in graph.iterblocks()
+                    for op in block.operations if op.opname == 'getattr')
+        assert names == set(['__enter__', '__exit__'])
         #
         def g(): pass
         def f(c, x):
