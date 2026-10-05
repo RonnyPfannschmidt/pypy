@@ -185,7 +185,7 @@ class TestJitRSre(support.LLJitMixin):
         assert res == 30
         self.check_resops(call=0)
 
-    @py.test.mark.skipif('sys.maxint <= 2**31 - 1')
+    @py.test.mark.skipif('sys.maxsize <= 2**31 - 1')
     def test_match_jit_bug(self):
         pattern = ".a" * 2500
         text = "a" * 6000
