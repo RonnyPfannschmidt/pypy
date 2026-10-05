@@ -122,6 +122,11 @@ class AppClassInstance(py.test.collect.Instance):
 
 class AppClassCollector(py.test.Class):
     def collect(self):
+        # since pytest 4, Class.collect is also what turns setup_class and
+        # setup_method into fixtures, so it has to run before the
+        # app-level instance replaces the one it returns
+        if not super(AppClassCollector, self).collect():
+            return []
         return [AppClassInstance(name="()", parent=self)]
 
     def setup(self):

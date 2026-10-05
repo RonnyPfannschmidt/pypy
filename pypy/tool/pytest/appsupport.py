@@ -5,7 +5,17 @@ import py
 import pytest
 from pypy.interpreter import gateway, pycode, typedef, baseobjspace
 from pypy.interpreter.error import OperationError, oefmt
-from _pytest.assertion.reinterpret import reinterpret as interpret
+
+try:
+    from _pytest.assertion.reinterpret import reinterpret as interpret
+except ImportError:
+    try:
+        from _pytest.assertion.newinterpret import interpret
+    except ImportError:
+        # pytest 3.0 removed assertion reinterpretation altogether.  Without
+        # it an app-level AssertionError carries no explanation, which is the
+        # same thing --assert=plain gives at interpreter level.
+        interpret = None
 
 # ____________________________________________________________
 
@@ -91,6 +101,12 @@ class AppFrame(py.code.Frame):
 
 class AppExceptionInfo(py.code.ExceptionInfo):
     """An ExceptionInfo object representing an app-level exception."""
+
+    def getrepr(self, *args, **kwargs):
+        # pytest 4 also passes truncate_locals, which the py.code.ExceptionInfo
+        # this inherits from predates
+        kwargs.pop('truncate_locals', None)
+        return super(AppExceptionInfo, self).getrepr(*args, **kwargs)
 
     def __init__(self, space, operr):
         self.space = space
@@ -183,7 +199,7 @@ def build_pytest_assertion(space):
             except py.error.ENOENT:
                 source = None
             from pypy import conftest
-            if source:
+            if interpret is not None and source:
                 msg = interpret(source, runner, should_fail=True)
                 space.setattr(w_self, space.wrap('args'),
                             space.newtuple([space.wrap(msg)]))

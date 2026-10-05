@@ -17,8 +17,13 @@ def pytest_ignore_collect(path, config):
         if os.path.commonprefix([path, THIS_DIR]) == THIS_DIR:  # workaround for bug in pytest<3.0.5
             return True
 
-def pytest_collect_file():
+class SkippedModule(pytest.Module):
+    def collect(self):
+        pytest.skip("RISCV tests skipped: cpu is %r" % (cpu,),
+                    allow_module_level=True)
+
+def pytest_pycollect_makemodule(path, parent):
+    # files named on the command line bypass pytest_ignore_collect; some of
+    # them cannot even be imported on another cpu
     if not IS_RISCV:
-        # We end up here when calling py.test .../test_foo.py with a wrong cpu
-        # It's OK to kill the whole session with the following line
-        pytest.skip("RISCV tests skipped: cpu is %r" % (cpu,))
+        return SkippedModule(path, parent)
