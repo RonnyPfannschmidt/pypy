@@ -22,3 +22,10 @@ class TestFlowObjSpacePy3(Base):
                 raise ValueError from e
         with py.test.raises(FlowingError):
             self.codetest(f)
+
+    def test_keyword_only_defaults(self):
+        def f():
+            return lambda *, k=1: k
+        with py.test.raises(FlowingError) as excinfo:
+            self.codetest(f)
+        assert 'keyword-only' in str(excinfo.value)
