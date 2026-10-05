@@ -335,36 +335,38 @@ def test_int_op_residual(opname):
             assert (op0.args[-1] == 'calldescr-%d' %
                      getattr(effectinfo.EffectInfo, 'OS_' + expected))
 
-def test_calls():
-    for RESTYPE, with_void, with_i, with_r, with_f in product(
-        [lltype.Signed, rclass.OBJECTPTR, lltype.Float, lltype.Void],
-        [False, True],
-        [False, True],
-        [False, True],
-        [False, True],
-    ):
-        ARGS = []
-        if with_void:
-            ARGS += [lltype.Void, lltype.Void]
-        if with_i:
-            ARGS += [lltype.Signed, lltype.Char]
-        if with_r:
-            ARGS += [rclass.OBJECTPTR, lltype.Ptr(rstr.STR)]
-        if with_f:
-            ARGS += [lltype.Float, lltype.Float]
-        random.shuffle(ARGS)
-        if RESTYPE == lltype.Float:
-            with_f = True
-        if with_f:
-            expectedkind = 'irf'   # all kinds
-        elif with_i:
-            expectedkind = 'ir'  # integers and references
-        else:
-            expectedkind = 'r'          # only references
-        yield residual_call_test, ARGS, RESTYPE, expectedkind
-        yield direct_call_test, ARGS, RESTYPE, expectedkind
-        yield indirect_residual_call_test, ARGS, RESTYPE, expectedkind
-        yield indirect_regular_call_test, ARGS, RESTYPE, expectedkind
+@py.test.mark.parametrize('checkno', range(4))
+@py.test.mark.parametrize('RESTYPE,with_void,with_i,with_r,with_f', list(product(
+    [lltype.Signed, rclass.OBJECTPTR, lltype.Float, lltype.Void],
+    [False, True],
+    [False, True],
+    [False, True],
+    [False, True],
+)))
+def test_calls(RESTYPE, with_void, with_i, with_r, with_f, checkno):
+    ARGS = []
+    if with_void:
+        ARGS += [lltype.Void, lltype.Void]
+    if with_i:
+        ARGS += [lltype.Signed, lltype.Char]
+    if with_r:
+        ARGS += [rclass.OBJECTPTR, lltype.Ptr(rstr.STR)]
+    if with_f:
+        ARGS += [lltype.Float, lltype.Float]
+    random.shuffle(ARGS)
+    if RESTYPE == lltype.Float:
+        with_f = True
+    if with_f:
+        expectedkind = 'irf'   # all kinds
+    elif with_i:
+        expectedkind = 'ir'  # integers and references
+    else:
+        expectedkind = 'r'          # only references
+    # indexed rather than parametrized by function object, because the four
+    # checks are defined further down this module
+    check = (residual_call_test, direct_call_test,
+             indirect_residual_call_test, indirect_regular_call_test)[checkno]
+    check(ARGS, RESTYPE, expectedkind)
 
 def get_direct_call_op(argtypes, restype):
     FUNC = lltype.FuncType(argtypes, restype)

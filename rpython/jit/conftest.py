@@ -5,7 +5,17 @@ x86/test/test_zll_random.
 
 import random
 
+# rpython/rlib/rsre/test/conftest.py calls this hook as well, so that the JIT
+# options exist when only the rsre tests are collected.  When both conftests
+# take part in one session the options would be registered twice, which is an
+# error since pytest 3.0, so do it only once.
+_options_added = False
+
 def pytest_addoption(parser):
+    global _options_added
+    if _options_added:
+        return
+    _options_added = True
     group = parser.getgroup("JIT options")
     group.addoption('--slow', action="store_true",
            default=False, dest="run_slow_tests",

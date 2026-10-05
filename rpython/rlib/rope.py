@@ -1,4 +1,3 @@
-import py
 import sys
 import math
 
@@ -866,7 +865,8 @@ def view(objs):
         else:
             content.extend(obj.dot(seen, toplevel=True))
     content.append("}")
-    p = py.test.ensuretemp("automaton").join("temp.dot")
+    from rpython.tool.udir import udir
+    p = udir.join("automaton.dot")
     p.write("\n".join(content))
     graphclient.display_dot_file(str(p))
 

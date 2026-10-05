@@ -1715,7 +1715,21 @@ class BaseBackendTest(Runner):
         fail = self.cpu.get_latest_descr(deadframe)
         assert fail.identifier == 1
 
-    def test_nan_and_infinity(self):
+    @py.test.mark.parametrize('opnum,realoperation,which', [
+        (rop.FLOAT_ADD,     operator.add,     'binary'),
+        (rop.FLOAT_SUB,     operator.sub,     'binary'),
+        (rop.FLOAT_MUL,     operator.mul,     'binary'),
+        (rop.FLOAT_TRUEDIV, operator.truediv, 'nozero'),
+        (rop.FLOAT_NEG,     operator.neg,     'unary'),
+        (rop.FLOAT_ABS,     abs,              'unary'),
+        (rop.FLOAT_LT,      operator.lt,      'binary'),
+        (rop.FLOAT_LE,      operator.le,      'binary'),
+        (rop.FLOAT_EQ,      operator.eq,      'binary'),
+        (rop.FLOAT_NE,      operator.ne,      'binary'),
+        (rop.FLOAT_GT,      operator.gt,      'binary'),
+        (rop.FLOAT_GE,      operator.ge,      'binary'),
+    ])
+    def test_nan_and_infinity(self, opnum, realoperation, which):
         if not self.cpu.supports_floats:
             py.test.skip("requires floats")
 
@@ -1795,19 +1809,10 @@ class BaseBackendTest(Runner):
                                     ', '.join(map(repr, testcase)),
                                     opname[guard_opnum], msg))
 
-        yield nan_and_infinity, rop.FLOAT_ADD, operator.add, all_cases_binary
-        yield nan_and_infinity, rop.FLOAT_SUB, operator.sub, all_cases_binary
-        yield nan_and_infinity, rop.FLOAT_MUL, operator.mul, all_cases_binary
-        yield nan_and_infinity, rop.FLOAT_TRUEDIV, \
-                                           operator.truediv, no_zero_divison
-        yield nan_and_infinity, rop.FLOAT_NEG, operator.neg, all_cases_unary
-        yield nan_and_infinity, rop.FLOAT_ABS, abs,          all_cases_unary
-        yield nan_and_infinity, rop.FLOAT_LT,  operator.lt,  all_cases_binary
-        yield nan_and_infinity, rop.FLOAT_LE,  operator.le,  all_cases_binary
-        yield nan_and_infinity, rop.FLOAT_EQ,  operator.eq,  all_cases_binary
-        yield nan_and_infinity, rop.FLOAT_NE,  operator.ne,  all_cases_binary
-        yield nan_and_infinity, rop.FLOAT_GT,  operator.gt,  all_cases_binary
-        yield nan_and_infinity, rop.FLOAT_GE,  operator.ge,  all_cases_binary
+        testcases = {'unary': all_cases_unary,
+                     'binary': all_cases_binary,
+                     'nozero': no_zero_divison}[which]
+        nan_and_infinity(opnum, realoperation, testcases)
 
     def test_noops(self):
         c_box = wrap_constant(self.alloc_string("hi there").getref_base())
