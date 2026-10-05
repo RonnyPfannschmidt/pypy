@@ -210,7 +210,6 @@ _binary_ops = [
     ('BINARY_MODULO', op.mod),
     ('BINARY_ADD', op.add),
     ('BINARY_SUBTRACT', op.sub),
-    ('BINARY_SUBSCR', op.getitem),
     ('BINARY_LSHIFT', op.lshift),
     ('BINARY_RSHIFT', op.rshift),
     ('BINARY_AND', op.and_),
@@ -240,6 +239,34 @@ def binaryoperation(OPCODE, operation):
     BINARY_OP.__name__ = OPCODE
     return BINARY_OP
 
+# BINARY_OP of Python 3.11+, by the operator dis names in its argument
+_binary_op_handlers = {
+    '+': 'BINARY_ADD', '-': 'BINARY_SUBTRACT', '*': 'BINARY_MULTIPLY',
+    '/': 'BINARY_TRUE_DIVIDE', '//': 'BINARY_FLOOR_DIVIDE',
+    '%': 'BINARY_MODULO', '**': 'BINARY_POWER', '@': 'BINARY_MATRIX_MULTIPLY',
+    '<<': 'BINARY_LSHIFT', '>>': 'BINARY_RSHIFT',
+    '&': 'BINARY_AND', '|': 'BINARY_OR', '^': 'BINARY_XOR',
+    '+=': 'INPLACE_ADD', '-=': 'INPLACE_SUBTRACT', '*=': 'INPLACE_MULTIPLY',
+    '/=': 'INPLACE_TRUE_DIVIDE', '//=': 'INPLACE_FLOOR_DIVIDE',
+    '%=': 'INPLACE_MODULO', '**=': 'INPLACE_POWER',
+    '@=': 'INPLACE_MATRIX_MULTIPLY',
+    '<<=': 'INPLACE_LSHIFT', '>>=': 'INPLACE_RSHIFT',
+    '&=': 'INPLACE_AND', '|=': 'INPLACE_OR', '^=': 'INPLACE_XOR',
+    '[]': 'BINARY_SUBSCR',
+}
+
+def constant_slice_bounds(w_index):
+    """(w_start, w_stop) if w_index is a constant slice without a step.
+
+    Python 3.14 loads constant slices such as x[1:] with LOAD_CONST
+    instead of building them; they mean getslice() as before.
+    """
+    if isinstance(w_index, Constant) and type(w_index.value) is slice:
+        s = w_index.value
+        if s.step is None:
+            return const(s.start), const(s.stop)
+    return None
+
 _unsupported_ops = [
     ('BINARY_POWER', "a ** b"),
     ('BUILD_CLASS', 'defining classes inside functions'),
@@ -247,6 +274,8 @@ _unsupported_ops = [
     ('STOP_CODE', '???'),
     ('STORE_NAME', 'modifying globals'),
     ('INPLACE_POWER', 'a **= b'),
+    ('BINARY_MATRIX_MULTIPLY', 'a @ b'),
+    ('INPLACE_MATRIX_MULTIPLY', 'a @= b'),
     ('LOAD_LOCALS', 'locals()'),
     ('IMPORT_STAR', 'import *'),
     ('MISSING_OPCODE', '???'),
@@ -596,6 +625,40 @@ class FlowContext(object):
         w_1 = self.popvalue()
         w_result = getattr(self, compare_method[testnum])(w_1, w_2)
         self.pushvalue(w_result)
+
+    def IS_OP(self, invert):
+        w_2 = self.popvalue()
+        w_1 = self.popvalue()
+        if invert:
+            self.pushvalue(self.cmp_is_not(w_1, w_2))
+        else:
+            self.pushvalue(self.cmp_is(w_1, w_2))
+
+    def CONTAINS_OP(self, invert):
+        w_2 = self.popvalue()
+        w_1 = self.popvalue()
+        if invert:
+            self.pushvalue(self.cmp_not_in(w_1, w_2))
+        else:
+            self.pushvalue(self.cmp_in(w_1, w_2))
+
+    def BINARY_OP(self, operator):
+        getattr(self, _binary_op_handlers[operator])(0)
+
+    def BINARY_SUBSCR(self, _):
+        w_index = self.popvalue()
+        w_obj = self.popvalue()
+        bounds = constant_slice_bounds(w_index)
+        if bounds is not None:
+            w_result = op.getslice(w_obj, *bounds).eval(self)
+        else:
+            w_result = op.getitem(w_obj, w_index).eval(self)
+        self.pushvalue(w_result)
+
+    def TO_BOOL(self, _):
+        # its consumers, POP_JUMP_IF_* and UNARY_NOT, take the truth value
+        # themselves
+        pass
 
     def exc_from_raise(self, w_arg1, w_arg2):
         """
@@ -1177,7 +1240,21 @@ class FlowContext(object):
         w_subscr = self.popvalue()
         w_obj = self.popvalue()
         w_newvalue = self.popvalue()
-        op.setitem(w_obj, w_subscr, w_newvalue).eval(self)
+        bounds = constant_slice_bounds(w_subscr)
+        if bounds is not None:
+            op.setslice(w_obj, bounds[0], bounds[1], w_newvalue).eval(self)
+        else:
+            op.setitem(w_obj, w_subscr, w_newvalue).eval(self)
+
+    def BINARY_SLICE(self, oparg):
+        w_end = self.popvalue()
+        w_start = self.popvalue()
+        self.slice(w_start, w_end)
+
+    def STORE_SLICE(self, oparg):
+        w_end = self.popvalue()
+        w_start = self.popvalue()
+        self.storeslice(w_start, w_end)
 
     def BUILD_SLICE(self, numargs):
         if numargs == 3:
@@ -1195,7 +1272,11 @@ class FlowContext(object):
         "del obj[subscr]"
         w_subscr = self.popvalue()
         w_obj = self.popvalue()
-        op.delitem(w_obj, w_subscr).eval(self)
+        bounds = constant_slice_bounds(w_subscr)
+        if bounds is not None:
+            op.delslice(w_obj, *bounds).eval(self)
+        else:
+            op.delitem(w_obj, w_subscr).eval(self)
 
     def BUILD_TUPLE(self, itemcount):
         items = self.popvalues(itemcount)

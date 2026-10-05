@@ -72,6 +72,19 @@ def _normalize(instr, code):
 def _decode_two_locals(instr, code):
     return instr.opname, (instr.arg >> 4, instr.arg & 15)
 
+@_decodes('COMPARE_OP')
+def _decode_comparison(instr, code):
+    # 3.12 shifts the operator by 4 bits, 3.13+ by 5 and adds a flag that
+    # coerces the result to bool; dis names the operator either way
+    operator = instr.argval
+    if operator.startswith('bool('):
+        operator = operator[len('bool('):-1]
+    return instr.opname, opcode.cmp_op.index(operator)
+
+@_decodes('BINARY_OP')
+def _decode_binary_operator(instr, code):
+    return instr.opname, instr.argrepr
+
 @_decodes('LOAD_DEREF', 'STORE_DEREF', 'DELETE_DEREF', 'LOAD_CLOSURE')
 def _decode_free_variable(instr, code):
     # Python 3.11+ numbers these across locals, cells and free variables.
@@ -79,6 +92,16 @@ def _decode_free_variable(instr, code):
     # co_freevars means the same on every host.
     return instr.opname, code.co_freevars.index(instr.argval)
 
+
+# Python 3.12+ compiles del x[a:b], and 3.14 also x[a:b], to a
+# BUILD_SLICE that the next instruction consumes.  RPython has no slice
+# objects, so the pair decodes as the slice operation of Python 2.
+_SLICE_OPERATIONS = {
+    ('BINARY_SUBSCR', 0): 'SLICE_3',
+    ('BINARY_OP', '[]'): 'SLICE_3',
+    ('STORE_SUBSCR', 0): 'STORE_SLICE_3',
+    ('DELETE_SUBSCR', 0): 'DELETE_SLICE_3',
+}
 
 def decode_instructions(code):
     """Decode a host code object with the dis module (Python 3 hosts).
@@ -100,6 +123,11 @@ def decode_instructions(code):
             table[instr.offset] = decoded
         else:
             opname, oparg = _normalize(instr, code)
+            if opname == 'BUILD_SLICE' and oparg == 2 and decoded is not None:
+                slice_opname = _SLICE_OPERATIONS.get(decoded[1:])
+                if slice_opname is not None:
+                    table[next_offset] = (decoded[0], slice_opname, 0)
+                    opname = 'NOP'
             decoded = (next_offset, opname, oparg)
             table[instr.offset] = decoded
         next_offset = instr.offset
