@@ -960,6 +960,14 @@ class FlowContext(object):
         self.pushvalue(w_result)
     LOAD_NAME = LOAD_GLOBAL
 
+    def PUSH_NULL_LOAD_GLOBAL(self, nameindex):
+        self.PUSH_NULL(0)
+        self.LOAD_GLOBAL(nameindex)
+
+    def LOAD_GLOBAL_PUSH_NULL(self, nameindex):
+        self.LOAD_GLOBAL(nameindex)
+        self.PUSH_NULL(0)
+
     def LOAD_ATTR(self, nameindex):
         "obj.attributename"
         w_obj = self.popvalue()
@@ -967,6 +975,16 @@ class FlowContext(object):
         w_value = op.getattr(w_obj, w_attributename).eval(self)
         self.pushvalue(w_value)
     LOOKUP_METHOD = LOAD_ATTR
+
+    def PUSH_NULL_LOAD_ATTR(self, nameindex):
+        w_obj = self.popvalue()
+        self.PUSH_NULL(0)
+        self.pushvalue(w_obj)
+        self.LOAD_ATTR(nameindex)
+
+    def LOAD_ATTR_PUSH_NULL(self, nameindex):
+        self.LOAD_ATTR(nameindex)
+        self.PUSH_NULL(0)
 
     def LOAD_DEREF(self, varindex):
         cell = self.closure[varindex]
@@ -1081,6 +1099,55 @@ class FlowContext(object):
             keywords[key] = w_value
         arguments = self.popvalues(n_arguments)
         w_function = self.popvalue()
+        self.do_call(w_function, arguments, keywords, w_star)
+
+    def pop_callable(self, arguments):
+        """Pop the two values below the arguments of a Python 3.11+ call:
+        the callable and NULL, in either order (PUSH_NULL goes first on
+        3.11 and 3.12, second on 3.13+), or a method and its self."""
+        w_second = self.popvalue()
+        w_first = self.popvalue()
+        if w_first is None:
+            return w_second, arguments
+        if w_second is None:
+            return w_first, arguments
+        return w_first, [w_second] + arguments
+
+    def call(self, n_arguments, keyword_names):
+        arguments = self.popvalues(n_arguments)
+        w_function, arguments = self.pop_callable(arguments)
+        keywords = {}
+        if keyword_names:
+            n_positional = len(arguments) - len(keyword_names)
+            keywords = dict(zip(keyword_names, arguments[n_positional:]))
+            arguments = arguments[:n_positional]
+        self.do_call(w_function, arguments, keywords, None)
+
+    def CALL(self, n_arguments):
+        self.call(n_arguments, ())
+
+    def CALL_KW(self, n_arguments):
+        w_names = self.popvalue()
+        self.call(n_arguments, w_names.value)
+
+    def CALL_FUNCTION_EX(self, shape):
+        # see _fuse_star_call in bytecode.py
+        n_positional, n_keywords, has_kwslot = shape
+        keywords = {}
+        if has_kwslot:
+            if n_keywords is None:
+                if self.popvalue() is not None:
+                    raise FlowingError("Dict-unpacking is not RPython")
+            else:
+                items = self.popvalues(2 * n_keywords)
+                for i in range(0, len(items), 2):
+                    keywords[items[i].value] = items[i + 1]
+        w_star = self.popvalue()
+        arguments = self.popvalues(n_positional)
+        w_function, arguments = self.pop_callable(arguments)
+        self.do_call(w_function, arguments, keywords, w_star)
+
+    def do_call(self, w_function, arguments, keywords, w_star):
         try:
             # py3-style print function
             if w_function.value == print:
@@ -1311,6 +1378,27 @@ class FlowContext(object):
         items = self.popvalues(itemcount)
         w_list = op.newlist(*items).eval(self)
         self.pushvalue(w_list)
+
+    def BUILD_LIST_FROM_CONST(self, constindex):
+        items = [const(item) for item in self.pycode.consts[constindex]]
+        self.pushvalue(op.newlist(*items).eval(self))
+
+    def LIST_EXTEND(self, oparg):
+        w_iterable = self.popvalue()
+        w_list = self.peekvalue(oparg - 1)
+        w_extend = op.getattr(w_list, const('extend')).eval(self)
+        op.simple_call(w_extend, w_iterable).eval(self)
+
+    def DICT_MERGE(self, oparg):
+        raise FlowingError("Dict-unpacking is not RPython")
+
+    def CALL_INTRINSIC_1(self, name):
+        if name == 'INTRINSIC_UNARY_POSITIVE':
+            self.UNARY_POSITIVE(0)
+        elif name == 'INTRINSIC_LIST_TO_TUPLE':
+            raise FlowingError("tuple(list) is not RPython")
+        else:
+            raise FlowingError("%s is not RPython" % (name,))
 
     def BUILD_MAP(self, itemcount):
         w_dict = op.newdict().eval(self)
