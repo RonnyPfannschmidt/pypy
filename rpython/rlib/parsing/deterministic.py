@@ -443,7 +443,8 @@ return ~i""")
         # type: () -> None
         """Display an interactive visualization of the automaton using GraphViz."""
         from dotviewer import graphclient
-        p = py.test.ensuretemp("automaton").join("temp.dot")
+        from rpython.tool.udir import udir
+        p = udir.join("automaton.dot")
         dot = self.dot()
         p.write(dot)
         plainpath = p.new(ext="plain")
@@ -604,7 +605,8 @@ class NFA(object):
         # type: () -> None
         """Display an interactive visualization of the NFA using GraphViz."""
         from dotviewer import graphclient
-        p = py.test.ensuretemp("automaton").join("temp.dot")
+        from rpython.tool.udir import udir
+        p = udir.join("nfa.dot")
         dot = self.dot()
         p.write(dot)
         plainpath = p.new(ext="plain")
