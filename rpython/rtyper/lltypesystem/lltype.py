@@ -1,5 +1,4 @@
 import weakref
-from thread import _local
 from types import MethodType, NoneType
 
 from rpython.annotator.bookkeeper import analyzer_for, immutablevalue
@@ -13,8 +12,9 @@ from rpython.rlib.rarithmetic import (
 from rpython.rtyper.extregistry import ExtRegistryEntry
 from rpython.tool import leakfinder
 from rpython.tool.identity_dict import identity_dict
+from rpython.tool.twothree import thread
 
-class State(_local):
+class State(thread._local):
     pass
 
 TLS = State()
