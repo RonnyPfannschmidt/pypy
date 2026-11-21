@@ -116,6 +116,15 @@ class HLOperation(with_metaclass(HLOperationMeta, SpaceOperation)):
         transformer = self.get_transformer(*args_s)
         return transformer(annotator, *self.args)
 
+def fits_machine_int(result):
+    """Whether an integer result is no Python 2 long: on Python 3, whether
+    it is within the range of the Python 2 int it replaces."""
+    if type(result) is long and long is not int:
+        return False
+    if type(result) is int:
+        return -sys.maxsize - 1 <= result <= sys.maxsize
+    return True
+
 class PureOperation(HLOperation):
     pure = True
 
@@ -140,7 +149,7 @@ class PureOperation(HLOperation):
                 # result.  The result is probably meant to be sent to
                 # an intmask(), but the 'long' constant confuses the
                 # annotator a lot.
-                if self.can_overflow and type(result) is long:
+                if self.can_overflow and not fits_machine_int(result):
                     pass
                 # don't constant-fold getslice on lists, either
                 elif self.opname == 'getslice' and type(result) is list:
