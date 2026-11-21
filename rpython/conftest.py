@@ -9,9 +9,11 @@ _install_dump_on_kill()
 
 option = None
 
+# the syntax of one Python version on purpose: other hosts cannot parse them
 if sys.version_info[0] >= 3:
-    # Python 2 syntax on purpose: the host cannot even parse them
     collect_ignore_glob = ['*_py2.py']
+else:
+    collect_ignore_glob = ['*_py3.py']
 
 try:
     from hypothesis import settings

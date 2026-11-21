@@ -422,8 +422,9 @@ class FlowContext(object):
             self.recorder.guessexception(self, *exceptions)
 
     def has_exc_handler(self):
-        return any(isinstance(block, (ExceptBlock, FinallyBlock))
-                for block in self.blockstack)
+        return (any(isinstance(block, (ExceptBlock, FinallyBlock))
+                    for block in self.blockstack) or
+                self.pycode.catches(self.last_offset))
 
     def build_flow(self):
         graph = self.graph
@@ -529,7 +530,21 @@ class FlowContext(object):
             if isinstance(signal, block.handles):
                 return block.handle(self, signal)
             block.cleanupstack(self)
+        if isinstance(signal, Raise):
+            entry = self.pycode.exception_handler(self.last_offset)
+            if entry is not None:
+                return self.enter_handler(entry, signal)
         return signal.nomoreblocks(self)
+
+    def enter_handler(self, entry, signal):
+        """Enter a handler of the Python 3.11+ exception table."""
+        _, _, target, depth, lasti = entry
+        self.dropvaluesuntil(depth)
+        if lasti:
+            # RERAISE restores f_lasti from it; the flow space has no use
+            self.pushvalue(w_None)
+        self.pushvalue(signal)
+        return target
 
     def getlocalvarname(self, index):
         return self.pycode.co_varnames[index]
@@ -698,6 +713,46 @@ class FlowContext(object):
         w_type = op.type(w_value).eval(self)
         return FSException(w_type, w_value)
 
+    def RAISE_VARARGS_FROM(self, nbargs):
+        if nbargs == 2:
+            w_cause = self.popvalue()
+            if w_cause != w_None:
+                raise FlowingError("raise ... from is not RPython, "
+                                   "except 'from None'")
+            nbargs = 1
+        self.RAISE_VARARGS(nbargs)
+
+    def PUSH_EXC_INFO(self, oparg):
+        signal = self.popvalue()
+        if self.last_exception is None:
+            self.pushvalue(w_None)
+        else:
+            self.pushvalue(Raise(self.last_exception))
+        self.pushvalue(signal)
+        self.last_exception = signal.w_exc
+
+    def POP_EXCEPT(self, oparg):
+        previous = self.popvalue()
+        if isinstance(previous, Raise):
+            self.last_exception = previous.w_exc
+        else:
+            self.last_exception = None
+
+    def CHECK_EXC_MATCH(self, oparg):
+        w_check_class = self.popvalue()
+        signal = self.peekvalue()
+        self.pushvalue(const(self.exception_match(signal.w_exc.w_type,
+                                                  w_check_class)))
+
+    def RERAISE(self, oparg):
+        raise self.popvalue()
+
+    def LOAD_ASSERTION_ERROR(self, oparg):
+        self.pushvalue(const(AssertionError))
+
+    def LOAD_COMMON_CONSTANT(self, value):
+        self.pushvalue(const(value))
+
     def RAISE_VARARGS(self, nbargs):
         if nbargs == 0:
             if self.last_exception is not None:
@@ -722,6 +777,9 @@ class FlowContext(object):
         try:
             mod = __import__(name, glob, loc, frm, level)
         except ImportError as e:
+            if type(e) is not ImportError:
+                # ModuleNotFoundError of Python 3
+                e = ImportError(*e.args)
             raise Raise(const(e))
         return const(mod)
 
@@ -998,6 +1056,9 @@ class FlowContext(object):
     def STORE_FAST(self, varindex):
         w_newvalue = self.popvalue()
         assert w_newvalue is not None
+        if isinstance(w_newvalue, Raise):
+            # except ... as name: of an exception table handler
+            w_newvalue = w_newvalue.w_exc.w_value
         self.locals_w = self.locals_w[:]
         self.locals_w[varindex] = w_newvalue
         if isinstance(w_newvalue, Variable):
