@@ -9,7 +9,7 @@ import py
 from rpython.tool import twothree
 from rpython.tool.uid import uid, Hashable
 from rpython.tool.sourcetools import PY_IDENTIFIER, nice_repr_for_func
-from rpython.tool.twothree import ClassType, unicode
+from rpython.tool.twothree import ClassType, builtins, unicode
 
 
 class FunctionGraph(object):
@@ -376,13 +376,13 @@ class Constant(Hashable):
 
     def foldable(self):
         to_check = self.value
-        if hasattr(to_check, 'im_self'):
-            to_check = to_check.im_self
+        if isinstance(to_check, types.MethodType):
+            to_check = to_check.__self__
         if isinstance(to_check, (type, ClassType, types.ModuleType)):
             # classes/types/modules are assumed immutable
             return True
         if (hasattr(to_check, '__class__') and
-                to_check.__class__.__module__ == '__builtin__'):
+                to_check.__class__.__module__ == builtins.__name__):
             # builtin object
             return True
         # User-created instance
