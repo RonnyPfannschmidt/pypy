@@ -86,18 +86,41 @@ def _decode_comparison(instr, code):
 def _decode_binary_operator(instr, code):
     return instr.opname, instr.argrepr
 
+def _iterator_slots():
+    """How many values GET_ITER pushes: 3.15 adds one next to the
+    iterator"""
+    get_iter = opcode.opmap['GET_ITER']
+    if get_iter >= opcode.HAVE_ARGUMENT:
+        return 1 + dis.stack_effect(get_iter, 0)
+    return 1 + dis.stack_effect(get_iter)
+
+if HAS_GET_INSTRUCTIONS:
+    ITERATOR_SLOTS = _iterator_slots()
+
+@_decodes('GET_ITER')
+def _decode_get_iter(instr, code):
+    if ITERATOR_SLOTS == 2:
+        return 'GET_ITER_PUSH_NULL', 0
+    return instr.opname, 0
+
 @_decodes('FOR_ITER')
 def _decode_for_iter(instr, code):
     if dis.stack_effect(instr.opcode, instr.arg, jump=True) > 0:
         # 3.12+: an exhausted iterator stays on the stack, and the jump
         # lands on END_FOR, which pops it with a placeholder above it
-        return 'FOR_ITER_TO_END_FOR', instr.argval
+        return 'FOR_ITER_TO_END_FOR', (instr.argval, ITERATOR_SLOTS - 1)
     return instr.opname, instr.argval
 
-@_decodes('END_FOR')
-def _decode_end_for(instr, code):
-    # END_FOR pops two values on 3.12, one on 3.13+
+@_decodes('END_FOR', 'POP_ITER')
+def _decode_pops(instr, code):
+    # END_FOR pops two values on 3.12, one on 3.13+; POP_ITER pops the
+    # iterator's slots
     return instr.opname, -dis.stack_effect(instr.opcode)
+
+@_decodes('IMPORT_NAME')
+def _decode_import_name(instr, code):
+    # 3.15 adds the flags of lazy imports
+    return instr.opname, code.co_names.index(instr.argval)
 
 @_decodes('LOAD_DEREF', 'STORE_DEREF', 'DELETE_DEREF', 'LOAD_CLOSURE')
 def _decode_free_variable(instr, code):
@@ -376,7 +399,8 @@ def decode_instructions(code):
 
 
 _CLEANUP_OPNAMES = frozenset(['NOP', 'COPY', 'SWAP', 'POP_TOP', 'POP_EXCEPT',
-                              'LOAD_CONST', 'STORE_FAST', 'DELETE_FAST'])
+                              'LOAD_CONST', 'LOAD_COMMON_CONSTANT',
+                              'STORE_FAST', 'DELETE_FAST'])
 
 
 class HostCode(object):

@@ -967,8 +967,15 @@ class FlowContext(object):
         self.blockstack.pop()
         self.pushvalue(w_nextitem)
 
-    def FOR_ITER_TO_END_FOR(self, target):
-        w_iterator = self.peekvalue()
+    def GET_ITER_PUSH_NULL(self, oparg):
+        # 3.15 keeps an index next to the iterator of a list or tuple;
+        # the flow space always iterates with next()
+        self.GET_ITER(oparg)
+        self.PUSH_NULL(0)
+
+    def FOR_ITER_TO_END_FOR(self, target_and_depth):
+        target, depth = target_and_depth
+        w_iterator = self.peekvalue(depth)
         self.blockstack.append(IterToEndForBlock(self, target))
         w_nextitem = op.next(w_iterator).eval(self)
         self.blockstack.pop()
@@ -976,9 +983,7 @@ class FlowContext(object):
 
     def END_FOR(self, count):
         self.popvalues(count)
-
-    def POP_ITER(self, oparg):
-        self.popvalue()
+    POP_ITER = END_FOR
 
     def SETUP_LOOP(self, target):
         block = LoopBlock(self, target)
