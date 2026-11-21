@@ -11,8 +11,7 @@ from rpython.jit.metainterp.history import AbstractDescr
 
 def format_assembler(ssarepr):
     """For testing: format a SSARepr as a multiline string."""
-    from cStringIO import StringIO
-
+    from rpython.tool.twothree import StringIO
     def repr(x):
         if isinstance(x, Register):
             return '%%%s%d' % (x.kind[0], x.index)    # e.g. %i1 or %r2 or %f3
@@ -69,10 +68,10 @@ def format_assembler(ssarepr):
                     if len(asm) == 3:
                         print('->', repr(asm[-1]), file=output)
                     else:
-                        lst = map(repr, asm[1:-2])
+                        lst = [repr(x) for x in asm[1:-2]]
                         print(', '.join(lst), '->', repr(asm[-1]), file=output)
                 else:
-                    lst = map(repr, asm[1:])
+                    lst = [repr(x) for x in asm[1:]]
                     if asm[0] == '-live-': lst.sort()
                     print(', '.join(lst), file=output)
             else:

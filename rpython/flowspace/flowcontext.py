@@ -210,7 +210,6 @@ _binary_ops = [
     ('BINARY_MODULO', op.mod),
     ('BINARY_ADD', op.add),
     ('BINARY_SUBTRACT', op.sub),
-    ('BINARY_SUBSCR', op.getitem),
     ('BINARY_LSHIFT', op.lshift),
     ('BINARY_RSHIFT', op.rshift),
     ('BINARY_AND', op.and_),
@@ -240,6 +239,34 @@ def binaryoperation(OPCODE, operation):
     BINARY_OP.__name__ = OPCODE
     return BINARY_OP
 
+# BINARY_OP of Python 3.11+, by the operator dis names in its argument
+_binary_op_handlers = {
+    '+': 'BINARY_ADD', '-': 'BINARY_SUBTRACT', '*': 'BINARY_MULTIPLY',
+    '/': 'BINARY_TRUE_DIVIDE', '//': 'BINARY_FLOOR_DIVIDE',
+    '%': 'BINARY_MODULO', '**': 'BINARY_POWER', '@': 'BINARY_MATRIX_MULTIPLY',
+    '<<': 'BINARY_LSHIFT', '>>': 'BINARY_RSHIFT',
+    '&': 'BINARY_AND', '|': 'BINARY_OR', '^': 'BINARY_XOR',
+    '+=': 'INPLACE_ADD', '-=': 'INPLACE_SUBTRACT', '*=': 'INPLACE_MULTIPLY',
+    '/=': 'INPLACE_TRUE_DIVIDE', '//=': 'INPLACE_FLOOR_DIVIDE',
+    '%=': 'INPLACE_MODULO', '**=': 'INPLACE_POWER',
+    '@=': 'INPLACE_MATRIX_MULTIPLY',
+    '<<=': 'INPLACE_LSHIFT', '>>=': 'INPLACE_RSHIFT',
+    '&=': 'INPLACE_AND', '|=': 'INPLACE_OR', '^=': 'INPLACE_XOR',
+    '[]': 'BINARY_SUBSCR',
+}
+
+def constant_slice_bounds(w_index):
+    """(w_start, w_stop) if w_index is a constant slice without a step.
+
+    Python 3.14 loads constant slices such as x[1:] with LOAD_CONST
+    instead of building them; they mean getslice() as before.
+    """
+    if isinstance(w_index, Constant) and type(w_index.value) is slice:
+        s = w_index.value
+        if s.step is None:
+            return const(s.start), const(s.stop)
+    return None
+
 _unsupported_ops = [
     ('BINARY_POWER', "a ** b"),
     ('BUILD_CLASS', 'defining classes inside functions'),
@@ -247,12 +274,43 @@ _unsupported_ops = [
     ('STOP_CODE', '???'),
     ('STORE_NAME', 'modifying globals'),
     ('INPLACE_POWER', 'a **= b'),
+    ('BINARY_MATRIX_MULTIPLY', 'a @ b'),
+    ('INPLACE_MATRIX_MULTIPLY', 'a @= b'),
     ('LOAD_LOCALS', 'locals()'),
     ('IMPORT_STAR', 'import *'),
     ('MISSING_OPCODE', '???'),
     ('DELETE_GLOBAL', 'modifying globals'),
     ('DELETE_NAME', 'modifying globals'),
     ('DELETE_ATTR', 'deleting attributes'),
+    # Python 3
+    ('LOAD_BUILD_CLASS', 'defining classes inside functions'),
+    ('LOAD_FROM_DICT_OR_GLOBALS', 'class bodies'),
+    ('LOAD_FROM_DICT_OR_DEREF', 'class bodies'),
+    ('SETUP_ANNOTATIONS', 'variable annotations outside functions'),
+    ('LOAD_SUPER_ATTR', 'super()'),
+    ('MAKE_CELL', 'closures'),
+    ('DELETE_DEREF', 'closures'),
+    ('UNPACK_EX', 'starred assignment'),
+    ('SET_UPDATE', 'set displays'),
+    ('FORMAT_WITH_SPEC', 'format specs in f-strings'),
+    ('BUILD_INTERPOLATION', 't-strings'),
+    ('BUILD_TEMPLATE', 't-strings'),
+    ('GET_LEN', 'match'),
+    ('MATCH_CLASS', 'match'),
+    ('MATCH_KEYS', 'match'),
+    ('MATCH_MAPPING', 'match'),
+    ('MATCH_SEQUENCE', 'match'),
+    ('CHECK_EG_MATCH', 'except*'),
+    ('CALL_INTRINSIC_2', 'exception groups and type parameters'),
+    ('GET_YIELD_FROM_ITER', 'yield from'),
+    ('SEND', 'yield from'),
+    ('END_SEND', 'yield from'),
+    ('CLEANUP_THROW', 'yield from'),
+    ('GET_AWAITABLE', 'async'),
+    ('GET_AITER', 'async'),
+    ('GET_ANEXT', 'async'),
+    ('END_ASYNC_FOR', 'async'),
+    ('BEFORE_ASYNC_WITH', 'async'),
 ]
 
 def unsupportedoperation(OPCODE, msg):
@@ -260,6 +318,18 @@ def unsupportedoperation(OPCODE, msg):
         raise FlowingError("%s is not RPython" % (msg,))
     UNSUPPORTED.__name__ = OPCODE
     return UNSUPPORTED
+
+# the conversions of FORMAT_VALUE (3.12) and CONVERT_VALUE (3.13+)
+CONVERSION_STR = 1
+CONVERSION_REPR = 2
+CONVERSION_ASCII = 3
+
+# the flags of MAKE_FUNCTION (3.12) and SET_FUNCTION_ATTRIBUTE (3.13+)
+FUNCTION_DEFAULTS = 0x01
+FUNCTION_KWDEFAULTS = 0x02
+FUNCTION_ANNOTATIONS = 0x04
+FUNCTION_CLOSURE = 0x08
+FUNCTION_ANNOTATE = 0x10
 
 compare_method = [
     "cmp_lt",   # "<"
@@ -393,8 +463,9 @@ class FlowContext(object):
             self.recorder.guessexception(self, *exceptions)
 
     def has_exc_handler(self):
-        return any(isinstance(block, (ExceptBlock, FinallyBlock))
-                for block in self.blockstack)
+        return (any(isinstance(block, (ExceptBlock, FinallyBlock))
+                    for block in self.blockstack) or
+                self.pycode.catches(self.last_offset))
 
     def build_flow(self):
         graph = self.graph
@@ -500,7 +571,21 @@ class FlowContext(object):
             if isinstance(signal, block.handles):
                 return block.handle(self, signal)
             block.cleanupstack(self)
+        if isinstance(signal, Raise):
+            entry = self.pycode.exception_handler(self.last_offset)
+            if entry is not None:
+                return self.enter_handler(entry, signal)
         return signal.nomoreblocks(self)
+
+    def enter_handler(self, entry, signal):
+        """Enter a handler of the Python 3.11+ exception table."""
+        _, _, target, depth, lasti = entry
+        self.dropvaluesuntil(depth)
+        if lasti:
+            # RERAISE restores f_lasti from it; the flow space has no use
+            self.pushvalue(w_None)
+        self.pushvalue(signal)
+        return target
 
     def getlocalvarname(self, index):
         return self.pycode.co_varnames[index]
@@ -597,6 +682,40 @@ class FlowContext(object):
         w_result = getattr(self, compare_method[testnum])(w_1, w_2)
         self.pushvalue(w_result)
 
+    def IS_OP(self, invert):
+        w_2 = self.popvalue()
+        w_1 = self.popvalue()
+        if invert:
+            self.pushvalue(self.cmp_is_not(w_1, w_2))
+        else:
+            self.pushvalue(self.cmp_is(w_1, w_2))
+
+    def CONTAINS_OP(self, invert):
+        w_2 = self.popvalue()
+        w_1 = self.popvalue()
+        if invert:
+            self.pushvalue(self.cmp_not_in(w_1, w_2))
+        else:
+            self.pushvalue(self.cmp_in(w_1, w_2))
+
+    def BINARY_OP(self, operator):
+        getattr(self, _binary_op_handlers[operator])(0)
+
+    def BINARY_SUBSCR(self, _):
+        w_index = self.popvalue()
+        w_obj = self.popvalue()
+        bounds = constant_slice_bounds(w_index)
+        if bounds is not None:
+            w_result = op.getslice(w_obj, *bounds).eval(self)
+        else:
+            w_result = op.getitem(w_obj, w_index).eval(self)
+        self.pushvalue(w_result)
+
+    def TO_BOOL(self, _):
+        # its consumers, POP_JUMP_IF_* and UNARY_NOT, take the truth value
+        # themselves
+        pass
+
     def exc_from_raise(self, w_arg1, w_arg2):
         """
         Create a wrapped exception from the arguments of a raise statement.
@@ -635,6 +754,46 @@ class FlowContext(object):
         w_type = op.type(w_value).eval(self)
         return FSException(w_type, w_value)
 
+    def RAISE_VARARGS_FROM(self, nbargs):
+        if nbargs == 2:
+            w_cause = self.popvalue()
+            if w_cause != w_None:
+                raise FlowingError("raise ... from is not RPython, "
+                                   "except 'from None'")
+            nbargs = 1
+        self.RAISE_VARARGS(nbargs)
+
+    def PUSH_EXC_INFO(self, oparg):
+        signal = self.popvalue()
+        if self.last_exception is None:
+            self.pushvalue(w_None)
+        else:
+            self.pushvalue(Raise(self.last_exception))
+        self.pushvalue(signal)
+        self.last_exception = signal.w_exc
+
+    def POP_EXCEPT(self, oparg):
+        previous = self.popvalue()
+        if isinstance(previous, Raise):
+            self.last_exception = previous.w_exc
+        else:
+            self.last_exception = None
+
+    def CHECK_EXC_MATCH(self, oparg):
+        w_check_class = self.popvalue()
+        signal = self.peekvalue()
+        self.pushvalue(const(self.exception_match(signal.w_exc.w_type,
+                                                  w_check_class)))
+
+    def RERAISE(self, oparg):
+        raise self.popvalue()
+
+    def LOAD_ASSERTION_ERROR(self, oparg):
+        self.pushvalue(const(AssertionError))
+
+    def LOAD_COMMON_CONSTANT(self, value):
+        self.pushvalue(const(value))
+
     def RAISE_VARARGS(self, nbargs):
         if nbargs == 0:
             if self.last_exception is not None:
@@ -659,6 +818,9 @@ class FlowContext(object):
         try:
             mod = __import__(name, glob, loc, frm, level)
         except ImportError as e:
+            if type(e) is not ImportError:
+                # ModuleNotFoundError of Python 3
+                e = ImportError(*e.args)
             raise Raise(const(e))
         return const(mod)
 
@@ -717,6 +879,11 @@ class FlowContext(object):
 
     def JUMP_ABSOLUTE(self, jumpto):
         return jumpto
+    JUMP_BACKWARD = JUMP_BACKWARD_NO_INTERRUPT = JUMP_ABSOLUTE
+
+    def RETURN_GENERATOR(self, oparg):
+        # the generator object, which POP_TOP drops again
+        self.pushvalue(w_None)
 
     def YIELD_VALUE(self, _):
         assert self.pycode.is_generator
@@ -763,6 +930,16 @@ class FlowContext(object):
         if self.guessbool(op.bool(w_value).eval(self)):
             return target
 
+    def POP_JUMP_IF_NONE(self, target):
+        w_value = self.popvalue()
+        if self.guessbool(op.is_(w_value, w_None).eval(self)):
+            return target
+
+    def POP_JUMP_IF_NOT_NONE(self, target):
+        w_value = self.popvalue()
+        if not self.guessbool(op.is_(w_value, w_None).eval(self)):
+            return target
+
     def JUMP_IF_FALSE_OR_POP(self, target):
         w_value = self.peekvalue()
         if not self.guessbool(op.bool(w_value).eval(self)):
@@ -790,6 +967,24 @@ class FlowContext(object):
         w_nextitem = op.next(w_iterator).eval(self)
         self.blockstack.pop()
         self.pushvalue(w_nextitem)
+
+    def GET_ITER_PUSH_NULL(self, oparg):
+        # 3.15 keeps an index next to the iterator of a list or tuple;
+        # the flow space always iterates with next()
+        self.GET_ITER(oparg)
+        self.PUSH_NULL(0)
+
+    def FOR_ITER_TO_END_FOR(self, target_and_depth):
+        target, depth = target_and_depth
+        w_iterator = self.peekvalue(depth)
+        self.blockstack.append(IterToEndForBlock(self, target))
+        w_nextitem = op.next(w_iterator).eval(self)
+        self.blockstack.pop()
+        self.pushvalue(w_nextitem)
+
+    def END_FOR(self, count):
+        self.popvalues(count)
+    POP_ITER = END_FOR
 
     def SETUP_LOOP(self, target):
         block = LoopBlock(self, target)
@@ -832,15 +1027,55 @@ class FlowContext(object):
         else:
             op.simple_call(w_exitfunc, w_None, w_None, w_None).eval(self)
 
+    def BEFORE_WITH(self, oparg):
+        # as SETUP_WITH, but the exception table covers the block
+        w_manager = self.popvalue()
+        w_exit = op.getattr(w_manager, const("__exit__")).eval(self)
+        self.pushvalue(w_exit)
+        w_enter = op.getattr(w_manager, const('__enter__')).eval(self)
+        self.pushvalue(op.simple_call(w_enter).eval(self))
+
+    def LOAD_SPECIAL(self, name):
+        # the bound method and NULL, as LOAD_ATTR_PUSH_NULL
+        w_obj = self.popvalue()
+        self.pushvalue(op.getattr(w_obj, const(name)).eval(self))
+        self.PUSH_NULL(0)
+
+    def WITH_EXCEPT_START(self, exit_depth):
+        # Note: RPython context managers receive None in lieu of tracebacks
+        # and cannot suppress the exception.
+        w_exc = self.peekvalue().w_exc
+        w_exitfunc = self.peekvalue(exit_depth)
+        # The annotator won't allow to merge exception types with None.
+        # Replace it with the exception value...
+        op.simple_call(w_exitfunc, w_exc.w_value, w_exc.w_value, w_None
+                       ).eval(self)
+        self.pushvalue(w_None)
+
     def LOAD_FAST(self, varindex):
         w_value = self.locals_w[varindex]
         if w_value is None:
             raise FlowingError("Local variable referenced before assignment")
         self.pushvalue(w_value)
 
+    LOAD_FAST_CHECK = LOAD_FAST
+    LOAD_FAST_BORROW = LOAD_FAST
+
+    def LOAD_FAST_LOAD_FAST(self, varindices):
+        first, second = varindices
+        self.LOAD_FAST(first)
+        self.LOAD_FAST(second)
+    LOAD_FAST_BORROW_LOAD_FAST_BORROW = LOAD_FAST_LOAD_FAST
+
     def LOAD_CONST(self, constindex):
         w_const = self.getconstant_w(constindex)
         self.pushvalue(w_const)
+
+    def LOAD_SMALL_INT(self, value):
+        self.pushvalue(const(value))
+
+    def RETURN_CONST(self, constindex):
+        raise Return(self.getconstant_w(constindex))
 
     def find_global(self, w_globals, varname):
         try:
@@ -858,6 +1093,14 @@ class FlowContext(object):
         self.pushvalue(w_result)
     LOAD_NAME = LOAD_GLOBAL
 
+    def PUSH_NULL_LOAD_GLOBAL(self, nameindex):
+        self.PUSH_NULL(0)
+        self.LOAD_GLOBAL(nameindex)
+
+    def LOAD_GLOBAL_PUSH_NULL(self, nameindex):
+        self.LOAD_GLOBAL(nameindex)
+        self.PUSH_NULL(0)
+
     def LOAD_ATTR(self, nameindex):
         "obj.attributename"
         w_obj = self.popvalue()
@@ -865,6 +1108,16 @@ class FlowContext(object):
         w_value = op.getattr(w_obj, w_attributename).eval(self)
         self.pushvalue(w_value)
     LOOKUP_METHOD = LOAD_ATTR
+
+    def PUSH_NULL_LOAD_ATTR(self, nameindex):
+        w_obj = self.popvalue()
+        self.PUSH_NULL(0)
+        self.pushvalue(w_obj)
+        self.LOAD_ATTR(nameindex)
+
+    def LOAD_ATTR_PUSH_NULL(self, nameindex):
+        self.LOAD_ATTR(nameindex)
+        self.PUSH_NULL(0)
 
     def LOAD_DEREF(self, varindex):
         cell = self.closure[varindex]
@@ -875,13 +1128,37 @@ class FlowContext(object):
             raise FlowingError("Undefined closure variable '%s'" % name)
         self.pushvalue(const(content))
 
+    def LOAD_FAST_AND_CLEAR(self, varindex):
+        # 3.12+ inlined comprehensions save their variable, which may be
+        # unbound (NULL), and STORE_FAST restores it afterwards
+        self.pushvalue(self.locals_w[varindex])
+        self.locals_w = self.locals_w[:]
+        self.locals_w[varindex] = None
+
     def STORE_FAST(self, varindex):
         w_newvalue = self.popvalue()
-        assert w_newvalue is not None
+        if w_newvalue is None:
+            # the NULL of LOAD_FAST_AND_CLEAR
+            self.locals_w = self.locals_w[:]
+            self.locals_w[varindex] = None
+            return
+        if isinstance(w_newvalue, Raise):
+            # except ... as name: of an exception table handler
+            w_newvalue = w_newvalue.w_exc.w_value
         self.locals_w = self.locals_w[:]
         self.locals_w[varindex] = w_newvalue
         if isinstance(w_newvalue, Variable):
             w_newvalue.rename(self.getlocalvarname(varindex))
+
+    def STORE_FAST_LOAD_FAST(self, varindices):
+        store, load = varindices
+        self.STORE_FAST(store)
+        self.LOAD_FAST(load)
+
+    def STORE_FAST_STORE_FAST(self, varindices):
+        first, second = varindices
+        self.STORE_FAST(first)
+        self.STORE_FAST(second)
 
     def STORE_GLOBAL(self, nameindex):
         varname = self.getname_u(nameindex)
@@ -928,6 +1205,18 @@ class FlowContext(object):
             w_value = self.peekvalue(delta)
             self.pushvalue(w_value)
 
+    def COPY(self, index):
+        self.pushvalue(self.peekvalue(index - 1))
+
+    def SWAP(self, index):
+        w_top = self.peekvalue()
+        self.settopvalue(self.peekvalue(index - 1))
+        self.settopvalue(w_top, index - 1)
+
+    def PUSH_NULL(self, oparg):
+        # the NULL of the Python 3.11+ calling convention, see CALL
+        self.pushvalue(None)
+
     for OPCODE, op in _unary_ops:
         locals()[OPCODE] = unaryoperation(OPCODE, op)
 
@@ -957,6 +1246,55 @@ class FlowContext(object):
             keywords[key] = w_value
         arguments = self.popvalues(n_arguments)
         w_function = self.popvalue()
+        self.do_call(w_function, arguments, keywords, w_star)
+
+    def pop_callable(self, arguments):
+        """Pop the two values below the arguments of a Python 3.11+ call:
+        the callable and NULL, in either order (PUSH_NULL goes first on
+        3.11 and 3.12, second on 3.13+), or a method and its self."""
+        w_second = self.popvalue()
+        w_first = self.popvalue()
+        if w_first is None:
+            return w_second, arguments
+        if w_second is None:
+            return w_first, arguments
+        return w_first, [w_second] + arguments
+
+    def call(self, n_arguments, keyword_names):
+        arguments = self.popvalues(n_arguments)
+        w_function, arguments = self.pop_callable(arguments)
+        keywords = {}
+        if keyword_names:
+            n_positional = len(arguments) - len(keyword_names)
+            keywords = dict(zip(keyword_names, arguments[n_positional:]))
+            arguments = arguments[:n_positional]
+        self.do_call(w_function, arguments, keywords, None)
+
+    def CALL(self, n_arguments):
+        self.call(n_arguments, ())
+
+    def CALL_KW(self, n_arguments):
+        w_names = self.popvalue()
+        self.call(n_arguments, w_names.value)
+
+    def CALL_FUNCTION_EX(self, shape):
+        # see _fuse_star_call in bytecode.py
+        n_positional, n_keywords, has_kwslot = shape
+        keywords = {}
+        if has_kwslot:
+            if n_keywords is None:
+                if self.popvalue() is not None:
+                    raise FlowingError("Dict-unpacking is not RPython")
+            else:
+                items = self.popvalues(2 * n_keywords)
+                for i in range(0, len(items), 2):
+                    keywords[items[i].value] = items[i + 1]
+        w_star = self.popvalue()
+        arguments = self.popvalues(n_positional)
+        w_function, arguments = self.pop_callable(arguments)
+        self.do_call(w_function, arguments, keywords, w_star)
+
+    def do_call(self, w_function, arguments, keywords, w_star):
         try:
             # py3-style print function
             if w_function.value == print:
@@ -1027,6 +1365,37 @@ class FlowContext(object):
         defaults = self.popvalues(numdefaults)
         fn = self.newfunction(w_codeobj, defaults)
         self.pushvalue(fn)
+
+    def set_function_attribute(self, w_function, flag, w_value):
+        """SET_FUNCTION_ATTRIBUTE of Python 3.13+, on the constant
+        function that MAKE_FUNCTION made."""
+        if flag == FUNCTION_DEFAULTS:
+            if not isinstance(w_value, Constant):
+                raise FlowingError("Dynamically created function must"
+                                   " have constant default values.")
+            defaults_w = [const(value) for value in w_value.value]
+            return self.newfunction(const(w_function.value.__code__),
+                                    defaults_w)
+        if flag in (FUNCTION_ANNOTATIONS, FUNCTION_ANNOTATE):
+            return w_function
+        if flag == FUNCTION_KWDEFAULTS:
+            raise FlowingError("keyword-only arguments are not RPython")
+        raise FlowingError("closures are not RPython")
+
+    def SET_FUNCTION_ATTRIBUTE(self, flag):
+        w_function = self.popvalue()
+        w_value = self.popvalue()
+        self.pushvalue(self.set_function_attribute(w_function, flag, w_value))
+
+    def MAKE_FUNCTION_FLAGS(self, flags):
+        # 3.12: code object on top, below it the values of the flags
+        w_function = self.newfunction(self.popvalue(), [])
+        for flag in (FUNCTION_CLOSURE, FUNCTION_ANNOTATIONS,
+                     FUNCTION_KWDEFAULTS, FUNCTION_DEFAULTS):
+            if flags & flag:
+                w_function = self.set_function_attribute(
+                    w_function, flag, self.popvalue())
+        self.pushvalue(w_function)
 
     def STORE_ATTR(self, nameindex):
         "obj.attributename = newvalue"
@@ -1140,7 +1509,21 @@ class FlowContext(object):
         w_subscr = self.popvalue()
         w_obj = self.popvalue()
         w_newvalue = self.popvalue()
-        op.setitem(w_obj, w_subscr, w_newvalue).eval(self)
+        bounds = constant_slice_bounds(w_subscr)
+        if bounds is not None:
+            op.setslice(w_obj, bounds[0], bounds[1], w_newvalue).eval(self)
+        else:
+            op.setitem(w_obj, w_subscr, w_newvalue).eval(self)
+
+    def BINARY_SLICE(self, oparg):
+        w_end = self.popvalue()
+        w_start = self.popvalue()
+        self.slice(w_start, w_end)
+
+    def STORE_SLICE(self, oparg):
+        w_end = self.popvalue()
+        w_start = self.popvalue()
+        self.storeslice(w_start, w_end)
 
     def BUILD_SLICE(self, numargs):
         if numargs == 3:
@@ -1158,7 +1541,11 @@ class FlowContext(object):
         "del obj[subscr]"
         w_subscr = self.popvalue()
         w_obj = self.popvalue()
-        op.delitem(w_obj, w_subscr).eval(self)
+        bounds = constant_slice_bounds(w_subscr)
+        if bounds is not None:
+            op.delslice(w_obj, *bounds).eval(self)
+        else:
+            op.delitem(w_obj, w_subscr).eval(self)
 
     def BUILD_TUPLE(self, itemcount):
         items = self.popvalues(itemcount)
@@ -1170,12 +1557,93 @@ class FlowContext(object):
         w_list = op.newlist(*items).eval(self)
         self.pushvalue(w_list)
 
+    def BUILD_LIST_FROM_CONST(self, constindex):
+        items = [const(item) for item in self.pycode.consts[constindex]]
+        self.pushvalue(op.newlist(*items).eval(self))
+
+    def LIST_EXTEND(self, oparg):
+        w_iterable = self.popvalue()
+        w_list = self.peekvalue(oparg - 1)
+        w_extend = op.getattr(w_list, const('extend')).eval(self)
+        op.simple_call(w_extend, w_iterable).eval(self)
+
+    # f-strings, and '%s' % x, which the compiler turns into one since 3.12
+
+    def convert_value(self, w_value, conversion):
+        if conversion == CONVERSION_REPR:
+            return op.repr(w_value).eval(self)
+        if conversion == CONVERSION_ASCII:
+            raise FlowingError("ascii() is not RPython")
+        return op.str(w_value).eval(self)
+
+    def FORMAT_VALUE(self, flags):
+        # 3.12: the conversion and whether a format spec is on the stack
+        if flags & 0x04:
+            raise FlowingError("format specs in f-strings are not RPython")
+        w_value = self.popvalue()
+        self.pushvalue(self.convert_value(w_value, flags & 0x03))
+
+    def CONVERT_VALUE(self, conversion):
+        self.pushvalue(self.convert_value(self.popvalue(), conversion))
+
+    def FORMAT_SIMPLE(self, oparg):
+        self.pushvalue(op.str(self.popvalue()).eval(self))
+
+    def BUILD_STRING(self, count):
+        pieces_w = self.popvalues(count)
+        if not pieces_w:
+            self.pushvalue(const(''))
+            return
+        w_result = pieces_w[0]
+        for w_piece in pieces_w[1:]:
+            w_result = op.add(w_result, w_piece).eval(self)
+        self.pushvalue(w_result)
+
+    def DICT_MERGE(self, oparg):
+        raise FlowingError("Dict-unpacking is not RPython")
+
+    def CALL_INTRINSIC_1(self, name):
+        if name == 'INTRINSIC_UNARY_POSITIVE':
+            self.UNARY_POSITIVE(0)
+        elif name == 'INTRINSIC_LIST_TO_TUPLE':
+            raise FlowingError("tuple(list) is not RPython")
+        else:
+            raise FlowingError("%s is not RPython" % (name,))
+
     def BUILD_MAP(self, itemcount):
         w_dict = op.newdict().eval(self)
         self.pushvalue(w_dict)
 
+    def newdict(self, keys_w, values_w):
+        w_dict = op.newdict().eval(self)
+        for w_key, w_value in zip(keys_w, values_w):
+            op.setitem(w_dict, w_key, w_value).eval(self)
+        return w_dict
+
+    def BUILD_MAP_FROM_ITEMS(self, itemcount):
+        items = self.popvalues(2 * itemcount)
+        self.pushvalue(self.newdict(items[0::2], items[1::2]))
+
+    def BUILD_CONST_KEY_MAP(self, itemcount):
+        w_keys = self.popvalue()
+        values_w = self.popvalues(itemcount)
+        keys_w = [const(key) for key in w_keys.value]
+        self.pushvalue(self.newdict(keys_w, values_w))
+
+    def MAP_ADD_KEY_VALUE(self, oparg):
+        w_value = self.popvalue()
+        w_key = self.popvalue()
+        w_dict = self.peekvalue(oparg - 1)
+        op.setitem(w_dict, w_key, w_value).eval(self)
+
+    def DICT_UPDATE(self, oparg):
+        raise FlowingError("Dict-unpacking is not RPython")
+
     def NOP(self, *args):
         pass
+    # interpreter bookkeeping of CPython 3.11+: the flow space takes the
+    # free variables from the function's closure (see LOAD_DEREF)
+    RESUME = NOT_TAKEN = COPY_FREE_VARS = NOP
 
     # XXX Unimplemented 2.7 opcodes ----------------
 
@@ -1218,6 +1686,7 @@ class FlowSignal(Exception):
     def nomoreblocks(self, ctx):
         raise BytecodeCorruption("misplaced bytecode - should not return")
 
+    __hash__ = Exception.__hash__
     def __eq__(self, other):
         return type(other) is type(self) and other.args == self.args
 
@@ -1381,6 +1850,17 @@ class IterBlock(ExceptBlock):
         w_exc = unroller.w_exc
         if ctx.exception_match(w_exc.w_type, const(StopIteration)):
             ctx.popvalue()
+            return self.handlerposition
+        else:
+            return ctx.unroll(unroller)
+
+class IterToEndForBlock(ExceptBlock):
+    """IterBlock of the hosts whose exhausted FOR_ITER leaves the iterator
+    on the stack: END_FOR pops it together with a placeholder value"""
+    def handle(self, ctx, unroller):
+        w_exc = unroller.w_exc
+        if ctx.exception_match(w_exc.w_type, const(StopIteration)):
+            ctx.pushvalue(w_None)
             return self.handlerposition
         else:
             return ctx.unroll(unroller)

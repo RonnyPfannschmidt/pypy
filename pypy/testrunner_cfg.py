@@ -17,7 +17,7 @@ DIRS_SPLIT = [
     'module/_hpy_universal/test/_vendored',
 ]
 
-pytestpath = os.path.abspath('pytest.py')
+pytest_driver = ['-m', 'pytest']
 
 def collect_one_testdir(testdirs, reldir, tests):
     for dir in DIRS_SPLIT:
@@ -35,8 +35,9 @@ def get_test_driver(testdir):
     # write the test gets a SIGBUS.  Must be off at startup -- a later
     # set_param("off") still leaves bridges to compile.
     if "jit/backend" in testdir and IS_PYPY_MACOS_ARM64:
-        return ["--jit", "off",  pytestpath]
-    return [pytestpath]
+        # interpreter options have to come before -m
+        return ["--jit", "off"] + pytest_driver
+    return list(pytest_driver)
 
 _cherrypick = os.getenv('PYPYCHERRYPICK', '')
 if _cherrypick:

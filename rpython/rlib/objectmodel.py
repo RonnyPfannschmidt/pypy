@@ -15,6 +15,7 @@ from rpython.tool.sourcetools import rpython_wrapper, func_with_new_name
 from rpython.rtyper.extregistry import ExtRegistryEntry
 from rpython.flowspace.specialcase import register_flow_sc
 from rpython.flowspace.model import Constant
+from rpython.tool.twothree import getargspec, unicode
 
 # specialize is a decorator factory for attaching _annspecialcase_
 # attributes to functions: for example
@@ -189,7 +190,7 @@ def enforceargs(*types_, **kwds):
                                  typecheck=typecheck,
                                  we_are_translated=we_are_translated)
         #
-        srcargs, srcvarargs, srckeywords, defaults = inspect.getargspec(f)
+        srcargs, srcvarargs, srckeywords, defaults = getargspec(f)
         if kwds:
             types = tuple([kwds.get(arg) for arg in srcargs])
         else:
@@ -1076,7 +1077,7 @@ def dict_to_switch(d, inline=True, default=NO_DEFAULT):
             return key[0]
 
     cached_size = len(d)
-    unrolling_iteritems = unrolling_iterable(d.iteritems())
+    unrolling_iteritems = unrolling_iterable(d.items())
 
     def lookup(query):
         if we_are_translated():

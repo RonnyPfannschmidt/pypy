@@ -1,9 +1,9 @@
-import py
 import sys
 import math
 
 from rpython.rlib.rarithmetic import intmask, ovfcheck
 from rpython.rlib.rarithmetic import r_uint, LONG_BIT
+from rpython.tool.twothree import unichr, unicode, xrange
 
 LOG2 = math.log(2)
 NBITS = int(math.log(sys.maxsize) / LOG2) + 2
@@ -865,7 +865,8 @@ def view(objs):
         else:
             content.extend(obj.dot(seen, toplevel=True))
     content.append("}")
-    p = py.test.ensuretemp("automaton").join("temp.dot")
+    from rpython.tool.udir import udir
+    p = udir.join("automaton.dot")
     p.write("\n".join(content))
     graphclient.display_dot_file(str(p))
 

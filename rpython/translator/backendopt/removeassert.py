@@ -1,3 +1,4 @@
+from rpython.annotator.model import SomeInstance
 from rpython.flowspace.model import Constant, checkgraph
 from rpython.rtyper.lltypesystem import lltype
 from rpython.rtyper.rtyper import LowLevelOpList, inputconst
@@ -31,6 +32,16 @@ def remove_asserts(translator, graphs):
                         total_count[0] += 1
                         if translator.config.translation.verbose:
                             log.removeassert("cannot remove an assert from %s" % (graph.name,))
+                elif (link.target is not graph.exceptblock
+                      and is_bool_switch(link.prevblock)
+                      and always_fails_assertion(translator, graph, link.target,
+                                                 ll_AssertionError)):
+                    # an assert whose failure path does work before raising,
+                    # e.g. building an AssertionError subclass with details
+                    if kill_assertion_link(graph, link):
+                        count += 1
+                        morework = True
+                        break
         if count:
             # now melt away the (hopefully) dead operation that compute
             # the condition
@@ -51,6 +62,61 @@ def remove_asserts(translator, graphs):
             msg = "Could not remove %d asserts, but removed %d asserts." % total_count
     if msg is not None:
         log.removeassert(msg)
+
+
+def is_bool_switch(block):
+    return (not block.canraise and len(block.exits) == 2
+            and block.exitswitch.concretetype is lltype.Bool)
+
+
+def always_fails_assertion(translator, graph, block, ll_AssertionError):
+    """Whether every path from block ends in an exception, and the ones it
+    raises itself are AssertionError or a subclass of it.
+
+    Exceptions escaping from calls on the way are allowed: they are what
+    building the assertion error may raise.
+    """
+    bookkeeper = translator.annotator.bookkeeper
+    assertion_def = bookkeeper.getuniqueclassdef(AssertionError)
+    seen = set()
+    todo = [block]
+    raises = False
+    while todo:
+        block = todo.pop()
+        if block in seen:
+            continue
+        seen.add(block)
+        if block is graph.returnblock:
+            return False
+        for i, link in enumerate(block.exits):
+            if link.target is not graph.exceptblock:
+                todo.append(link.target)
+                continue
+            if block.canraise and i > 0:
+                continue
+            v_value = link.args[1]
+            if isinstance(v_value, Constant):
+                if v_value.value != ll_AssertionError:
+                    return False
+            else:
+                s_value = annotation_through_casts(block, v_value)
+                if not (isinstance(s_value, SomeInstance)
+                        and s_value.classdef is not None
+                        and s_value.classdef.issubclass(assertion_def)):
+                    return False
+            raises = True
+    return raises
+
+
+def annotation_through_casts(block, v):
+    # the rtyper raises a cast_pointer of the annotated instance
+    producers = dict((op.result, op) for op in block.operations)
+    while v.annotation is None and v in producers:
+        op = producers[v]
+        if op.opname not in ('cast_pointer', 'same_as'):
+            break
+        v = op.args[0]
+    return v.annotation
 
 
 def kill_assertion_link(graph, link):

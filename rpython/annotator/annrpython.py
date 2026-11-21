@@ -6,6 +6,7 @@ from contextlib import contextmanager
 
 from rpython.tool.ansi_print import AnsiLogger
 from rpython.tool.pairtype import pair
+from rpython.tool import divlog
 from rpython.tool.error import (format_blocked_annotation_error,
                              gather_error, source_lines)
 from rpython.flowspace.model import Variable, Constant, checkgraph
@@ -15,6 +16,7 @@ from rpython.annotator.model import (
     typeof, s_ImpossibleValue, SomeInstance, intersection, difference)
 from rpython.annotator.bookkeeper import Bookkeeper
 from rpython.rtyper.normalizecalls import perform_normalizations
+from rpython.tool.twothree import ClassType
 
 log = AnsiLogger("annrpython")
 
@@ -60,7 +62,7 @@ class RPythonAnnotator(object):
         attrs = """translator genpendingblocks annotated links_followed
         notify bookkeeper frozen policy added_blocks""".split()
         ret = self.__dict__.copy()
-        for key, value in ret.items():
+        for key, value in list(ret.items()):
             if key not in attrs:
                 assert type(value) is dict, (
                     "%r is not dict. please update %s.__getstate__" %
@@ -245,7 +247,7 @@ class RPythonAnnotator(object):
             raise annmodel.AnnotatorError(text)
 
         if got_blocked_blocks:
-            for graph in self.blocked_graphs.values():
+            for graph in list(self.blocked_graphs.values()):
                 self.blocked_graphs[graph] = True
 
             blocked_blocks = [block for block, done in self.annotated.items()
@@ -577,7 +579,7 @@ class RPythonAnnotator(object):
 
 
     def follow_link(self, graph, link, constraints):
-        assert not (isinstance(link.exitcase, (types.ClassType, type)) and
+        assert not (isinstance(link.exitcase, (ClassType, type)) and
                 issubclass(link.exitcase, BaseException))
 
         ignore_link = False
@@ -606,7 +608,7 @@ class RPythonAnnotator(object):
         v_last_exc_type = link.last_exception
         v_last_exc_value = link.last_exc_value
 
-        assert (isinstance(link.exitcase, (types.ClassType, type)) and
+        assert (isinstance(link.exitcase, (ClassType, type)) and
                 issubclass(link.exitcase, BaseException))
 
         assert v_last_exc_type and v_last_exc_value
@@ -651,6 +653,8 @@ class RPythonAnnotator(object):
             if isinstance(self.annotation(arg), annmodel.SomeImpossibleValue):
                 raise BlockedInference(self, op, -1)
         resultcell = op.consider(self)
+        if divlog.LOGFILE and op.opname in divlog.DIVISIONS:
+            divlog.record(self, op)
         if resultcell is None:
             resultcell = s_ImpossibleValue
         elif resultcell == s_ImpossibleValue:

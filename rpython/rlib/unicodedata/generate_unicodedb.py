@@ -4,6 +4,7 @@ from __future__ import print_function
 import sys, os
 import itertools
 from collections import defaultdict
+from rpython.tool.twothree import unichr
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
@@ -740,7 +741,7 @@ def write_character_names(outfile, table, base_mod):
 
 def writeUnicodedata(version, version_tuple, table, outfile, base):
     if base:
-        outfile.print_code('import %s as base_mod' % base)
+        outfile.print_code('from rpython.rlib.unicodedata import %s as base_mod' % base)
         base_mod = __import__(base)
     else:
         outfile.print_code("base_mod = None")

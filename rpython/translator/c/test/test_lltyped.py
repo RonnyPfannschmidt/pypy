@@ -5,6 +5,7 @@ from rpython.rtyper.lltypesystem.lltype import *
 from rpython.rtyper.lltypesystem import rffi
 from rpython.translator.c.test.test_genc import compile
 from rpython.tool.sourcetools import func_with_new_name
+from rpython.tool.twothree import long, xrange
 
 
 class TestLowLevelType(object):
@@ -745,9 +746,9 @@ class TestLowLevelType(object):
         res = fn()
         assert res == 42
 
-    def test_llgroup_size_limit(self):
-        yield self._test_size_limit, True
-        yield self._test_size_limit, False
+    @py.test.mark.parametrize('toobig', [True, False])
+    def test_llgroup_size_limit(self, toobig):
+        self._test_size_limit(toobig)
 
     def _test_size_limit(self, toobig):
         import sys

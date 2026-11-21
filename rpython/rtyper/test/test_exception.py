@@ -97,6 +97,18 @@ class TestException(BaseRtypingTest):
         res = self.interpret(f, [7])
         assert res is None
 
+    def test_assertionerror_subclass_keeps_init_and_attributes(self):
+        # AssertionError subclasses used to be taken for built-in
+        # exceptions: __init__ skipped, no attributes allowed
+        class AnnotatedError(AssertionError):
+            def __init__(self, n):
+                self.n = n
+        def f(n):
+            if n > 10:
+                raise AnnotatedError(n)
+            return AnnotatedError(n).n
+        assert self.interpret(f, [5]) == 5
+
     def test_raise_and_catch_other(self):
         class BytecodeCorruption(Exception):
             pass

@@ -4,6 +4,7 @@ import sys
 from rpython.rlib.parsing.tree import Nonterminal, Symbol, RPythonVisitor
 from rpython.rlib.parsing.codebuilder import Codebuilder
 from rpython.rlib.objectmodel import we_are_translated
+from rpython.tool.twothree import with_metaclass
 
 class BacktrackException(Exception):
     def __init__(self, error=None):
@@ -625,7 +626,7 @@ class MetaPackratParser(type):
     def __new__(cls, name_, bases, dct):
         if '__doc__' not in dct or dct['__doc__'] is None:
             return type.__new__(cls, name_, bases, dct)
-        from pypackrat import PyPackratSyntaxParser
+        from rpython.rlib.parsing.pypackrat import PyPackratSyntaxParser
         import sys, new, inspect
         frame = sys._getframe(1)
         source = dct['__doc__']
@@ -674,8 +675,7 @@ class MetaPackratParser(type):
         result._code = visitor.get_code()
         return result
 
-class PackratParser(object):
-    __metaclass__ = MetaPackratParser
+class PackratParser(with_metaclass(MetaPackratParser, object)):
 
     _ErrorInformation = ErrorInformation
     _BacktrackException = BacktrackException
@@ -722,7 +722,7 @@ class PackratParser(object):
 
 def test_generate():
     f = py.path.local(__file__).dirpath().join("pypackrat.py")
-    from pypackrat import PyPackratSyntaxParser
+    from rpython.rlib.parsing.pypackrat import PyPackratSyntaxParser
     p = PyPackratSyntaxParser(syntax)
     t = p.file()
     t = t.visit(TreeOptimizer())

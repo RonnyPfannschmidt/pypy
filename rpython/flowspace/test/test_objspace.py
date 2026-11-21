@@ -8,12 +8,13 @@ from rpython.flowspace.model import (
 from rpython.translator.simplify import simplify_graph
 from rpython.flowspace.objspace import build_flow
 from rpython.flowspace.flowcontext import FlowingError, FlowContext
-from rpython.flowspace.bytecode import HostCode
+from rpython.flowspace.bytecode import HostCode, HAS_GET_INSTRUCTIONS
 from rpython.conftest import option
 from rpython.tool.stdlib_opcode import host_bytecode_spec
 
 import os
 import operator
+from rpython.tool.twothree import get_function, unichr, unicode
 is_operator = getattr(operator, 'is_', operator.eq) # it's not there 2.2
 
 @contextmanager
@@ -35,7 +36,7 @@ class Base:
     def codetest(self, func, **kwds):
         import inspect
         try:
-            func = func.im_func
+            func = get_function(func)
         except AttributeError:
             pass
         #name = func.func_name
@@ -56,11 +57,21 @@ class Base:
                 result[op.opname] += 1
         return result
 
+# opcodes that no code object contains: dis hides CACHE entries and
+# instrumented or specialized forms, and pseudo-opcodes (numbered from 256)
+# exist only in the compiler
+NOT_IN_CODE_OBJECTS = set(['CACHE', 'RESERVED', 'ENTER_EXECUTOR',
+                           'INTERPRETER_EXIT', 'EXIT_INIT_CHECK',
+                           'TRACE_RECORD'])
+
 def test_all_opcodes_defined():
-    opnames = set(host_bytecode_spec.method_names)
+    opnames = set(name for index, name in
+                  enumerate(host_bytecode_spec.method_names)
+                  if index < 256 and not name.startswith('INSTRUMENTED_'))
     methods = set([name for name in dir(FlowContext) if name.upper() == name])
-    handled_elsewhere = set(['EXTENDED_ARG', 'LOAD_REVDB_VAR'])
-    missing = opnames - methods - handled_elsewhere
+    # decoded away by HostCode (see bytecode.py)
+    handled_elsewhere = set(['EXTENDED_ARG', 'LOAD_REVDB_VAR', 'KW_NAMES'])
+    missing = opnames - methods - handled_elsewhere - NOT_IN_CODE_OBJECTS
     assert not missing
 
 class TestFlowObjSpace(Base):
@@ -108,9 +119,10 @@ class TestFlowObjSpace(Base):
 
     def test_loop(self):
         graph = self.codetest(self.loop)
-        assert self.all_operations(graph) == {'abs': 1,
-                                              'bool': 1,
-                                              'sub': 1}
+        ops = self.all_operations(graph)
+        # 3.12 and 3.13 test the condition at the loop's end once more
+        assert ops.pop('bool') in (1, 2)
+        assert ops == {'abs': 1, 'sub': 1}
 
     #__________________________________________________________
     def print_(i):
@@ -778,7 +790,48 @@ class TestFlowObjSpace(Base):
         for block in graph.iterblocks():
             for op in block.operations:
                 assert op.opname == "call_args"
-                assert op.args == map(Constant, [g, (0, ('x',), False), 2])
+                assert op.args == [Constant(g), Constant((0, ('x',), False)),
+                                   Constant(2)]
+
+    def test_star_call_shapes(self):
+        def g(*args, **kwds):
+            return args
+        class A:
+            def m(self, *args):
+                return args
+        def f(x, args):
+            g(x, *args)
+            g(x, *args, k=x)
+            g(*args, k=x)
+            A().m(x, *args)
+        graph = self.codetest(f)
+        shapes = [op.args[1].value for block in graph.iterblocks()
+                  for op in block.operations if op.opname == 'call_args']
+        assert shapes == [(1, (), True), (1, ('k',), True), (0, ('k',), True),
+                          (1, (), True)]
+
+    def test_comprehension_variable_stays_unbound(self):
+        def f(xs):
+            lst = [x + 1 for x in xs]
+            return x
+        with py.test.raises(FlowingError):
+            self.codetest(f)
+
+    def test_dict_literals(self):
+        def f(a, b):
+            return {'a': a, 'b': b}, {a: b}
+        graph = self.codetest(f)
+        ops = self.all_operations(graph)
+        assert ops['newdict'] == 2
+        assert ops['setitem'] == 3
+
+    def test_constant_list_literal(self):
+        def f():
+            return [1, 2, 3]
+        graph = self.codetest(f)
+        [op] = [op for block in graph.iterblocks() for op in block.operations]
+        assert op.opname == 'newlist'
+        assert op.args == [Constant(1), Constant(2), Constant(3)]
 
     def test_catch_importerror_1(self):
         def f():
@@ -806,20 +859,43 @@ class TestFlowObjSpace(Base):
         assert len(graph.startblock.exits) == 1
         assert graph.startblock.exits[0].target is graph.returnblock
 
+    def test_assert_raises_assertionerror(self):
+        # exec: the assertion rewriting of the test module must not see it
+        namespace = {}
+        exec("def f(x):\n    assert x\n", namespace)
+        graph = build_flow(namespace['f'])
+        simplify_graph(graph)
+        [call] = [op for block in graph.iterblocks()
+                  for op in block.operations if op.opname == 'simple_call']
+        assert call.args == [Constant(AssertionError)]
+
+    def test_implicit_exception_in_except_body_is_not_caught(self):
+        def f(x, lst):
+            try:
+                x()
+            except ValueError as e:
+                return lst[0]
+            return 0
+        graph = self.codetest(f)
+        for block in graph.iterblocks():
+            for op in block.operations:
+                if op.opname == 'getitem':
+                    assert not block.canraise
+
     def test_importerror_1(self):
         def f():
             import rpython.this_does_not_exist
-        py.test.raises(ImportError, 'self.codetest(f)')
+        py.test.raises(ImportError, self.codetest, f)
 
     def test_importerror_2(self):
         def f():
             from rpython import this_does_not_exist
-        py.test.raises(ImportError, 'self.codetest(f)')
+        py.test.raises(ImportError, self.codetest, f)
 
     def test_importerror_3(self):
         def f():
             import rpython.flowspace.test.cant_import
-        e = py.test.raises(ImportError, 'self.codetest(f)')
+        e = py.test.raises(ImportError, self.codetest, f)
         assert "some explanation here" in str(e.value)
 
     def test_relative_import(self):
@@ -853,6 +929,8 @@ class TestFlowObjSpace(Base):
         graph = self.codetest(myfunc)
         assert graph.startblock.exits[0].target is graph.returnblock
 
+    @py.test.mark.xfail(HAS_GET_INSTRUCTIONS, reason="str is unicode on "
+                        "Python 3; the str/unicode dialect is undecided")
     def test_unicode(self):
         def myfunc(n):
             try:
@@ -965,6 +1043,9 @@ class TestFlowObjSpace(Base):
         # 2 method calls: x.__enter__() and x.__exit__(None, None, None)
         assert self.all_operations(graph) == {'getattr': 2,
                                               'simple_call': 2}
+        names = set(op.args[1].value for block in graph.iterblocks()
+                    for op in block.operations if op.opname == 'getattr')
+        assert names == set(['__enter__', '__exit__'])
         #
         def g(): pass
         def f(c, x):
@@ -1000,6 +1081,8 @@ class TestFlowObjSpace(Base):
                         c.co_filename, c.co_name, c.co_firstlineno,
                         c.co_lnotab)
 
+    @py.test.mark.skipif(HAS_GET_INSTRUCTIONS,
+                         reason="runs PyPy 2 bytecode")
     def test_callmethod_opcode(self):
         """ Tests code generated by pypy-c compiled with CALL_METHOD
         bytecode
@@ -1024,6 +1107,8 @@ class TestFlowObjSpace(Base):
             assert all_ops['getattr'] == 1
 
     @py.test.mark.skipif('sys.version_info < (2, 7)')
+    @py.test.mark.skipif(HAS_GET_INSTRUCTIONS,
+                         reason="runs PyPy 2 bytecode")
     def test_build_list_from_arg_opcode(self):
         """ Tests code generated by pypy-c compiled with BUILD_LIST_FROM_ARG
         bytecode
@@ -1050,7 +1135,7 @@ class TestFlowObjSpace(Base):
         foolist = [Foo()]
         def f():
             return foolist[0]
-        py.test.raises(RuntimeError, "self.codetest(f)")
+        py.test.raises(RuntimeError, self.codetest, f)
 
     def test_getslice_constfold(self):
         def check(f, expected):
@@ -1075,6 +1160,27 @@ class TestFlowObjSpace(Base):
             s = 'hello'
             return s[-3:]
         check(f3, 'llo')
+
+    def test_is_none_branches(self):
+        def f(x, y):
+            if x is None:
+                return 1
+            if y is not None:
+                return 2
+            return 3
+        graph = self.codetest(f)
+        assert self.all_operations(graph)['is_'] == 2
+
+    def test_slice_operations(self):
+        def f(lst, i, j, x):
+            lst[1:] = x
+            lst[i:j] = x
+            del lst[:2]
+            del lst[i:j]
+            return lst[i:], lst[1:j]
+        graph = self.codetest(f)
+        assert self.all_operations(graph) == {
+            'setslice': 2, 'delslice': 2, 'getslice': 2, 'newtuple': 1}
 
     def test_constfold_attribute_error(self):
         def f(x):
@@ -1126,14 +1232,14 @@ class TestFlowObjSpace(Base):
                 f()
             except NotImplementedError:
                 pass
-        py.test.raises(FlowingError, "self.codetest(f)")
+        py.test.raises(FlowingError, self.codetest, f)
         #
         def f():
             try:
                 f()
             except AssertionError:
                 pass
-        py.test.raises(FlowingError, "self.codetest(f)")
+        py.test.raises(FlowingError, self.codetest, f)
 
     def test_cannot_catch_special_exceptions_2(self):
         class MyNIE(NotImplementedError):
@@ -1143,14 +1249,14 @@ class TestFlowObjSpace(Base):
                 f()
             except MyNIE:
                 pass
-        py.test.raises(FlowingError, "self.codetest(f)")
+        py.test.raises(FlowingError, self.codetest, f)
         #
         def f():
             try:
                 f()
             except (ValueError, MyNIE):
                 pass
-        py.test.raises(FlowingError, "self.codetest(f)")
+        py.test.raises(FlowingError, self.codetest, f)
 
     def test_locals_dict(self):
         def f():
@@ -1170,9 +1276,10 @@ class TestFlowObjSpace(Base):
         assert str(rex.exconly()).find("global variable 'a' undeclared")
 
     def test_eval(self):
-        exec("def f(): return a")
+        namespace = {}
+        exec("def f(): return a", namespace)
         with py.test.raises(FlowingError):
-            self.codetest(f)
+            self.codetest(namespace['f'])
 
     @py.test.mark.xfail(reason="closures aren't supported")
     def test_cellvar_store(self):
@@ -1262,9 +1369,11 @@ class TestFlowObjSpace(Base):
         def f(iterable):
             return [5 for x in iterable]
         graph = self.codetest(f)
-        assert self.all_operations(graph) == {'getattr': 1,
-                                              'iter': 1, 'newlist': 1,
-                                              'next': 1, 'simple_call': 1}
+        ops = self.all_operations(graph)
+        # 3.13 calls GET_ITER on the iterator once more
+        assert ops.pop('iter') in (1, 2)
+        assert ops == {'getattr': 1, 'newlist': 1, 'next': 1,
+                       'simple_call': 1}
 
     def test_mutate_const_list(self):
         lst = list('abcdef')
