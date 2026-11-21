@@ -799,6 +799,14 @@ class TestFlowObjSpace(Base):
         assert shapes == [(1, (), True), (1, ('k',), True), (0, ('k',), True),
                           (1, (), True)]
 
+    def test_dict_literals(self):
+        def f(a, b):
+            return {'a': a, 'b': b}, {a: b}
+        graph = self.codetest(f)
+        ops = self.all_operations(graph)
+        assert ops['newdict'] == 2
+        assert ops['setitem'] == 3
+
     def test_constant_list_literal(self):
         def f():
             return [1, 2, 3]
