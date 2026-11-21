@@ -1,9 +1,10 @@
 """
 Bytecode handling classes and functions for use by the flow space.
 """
-from rpython.tool.stdlib_opcode import host_bytecode_spec
-from opcode import EXTENDED_ARG, HAVE_ARGUMENT
+import dis
 import opcode
+from opcode import EXTENDED_ARG, HAVE_ARGUMENT
+from rpython.tool.stdlib_opcode import host_bytecode_spec
 from rpython.flowspace.argument import Signature
 
 try:
@@ -37,6 +38,46 @@ class BytecodeCorruption(Exception):
 
 HASJREL = bytearray([_opnum in opcode.hasjrel for _opnum in range(256)])
 
+HAS_GET_INSTRUCTIONS = hasattr(dis, 'get_instructions')
+JUMP_OPCODES = frozenset(getattr(opcode, 'hasjump',
+                                 opcode.hasjrel + opcode.hasjabs))
+
+
+def decode_instructions(code):
+    """Decode a host code object with the dis module (Python 3 hosts).
+
+    Returns ({offset: (next_offset, opname, oparg)}, exception_entries).
+    dis resolves what differs between bytecode versions: EXTENDED_ARG,
+    inline cache entries and the unit and direction of jumps.  The
+    exception entries are (start, end, target, depth, lasti) tuples, with
+    'end' exclusive, from the exception table of CPython 3.11 and later.
+    """
+    instrs = list(dis.get_instructions(code))
+    table = {}
+    next_offset = len(code.co_code)
+    decoded = None
+    for instr in reversed(instrs):
+        if instr.opname == 'EXTENDED_ARG':
+            # dis already folded the prefix into the argument of the
+            # instruction that follows; jumps may still target the prefix
+            table[instr.offset] = decoded
+        else:
+            if instr.opcode in JUMP_OPCODES:
+                oparg = instr.argval
+            elif instr.arg is None:
+                oparg = 0
+            else:
+                oparg = instr.arg
+            decoded = (next_offset, instr.opname, oparg)
+            table[instr.offset] = decoded
+        next_offset = instr.offset
+    bytecode = dis.Bytecode(code)
+    exception_entries = tuple(
+        (entry.start, entry.end, entry.target, entry.depth, entry.lasti)
+        for entry in getattr(bytecode, 'exception_entries', ()))
+    return table, exception_entries
+
+
 class HostCode(object):
     """
     A wrapper around a native code object of the host interpreter
@@ -45,7 +86,8 @@ class HostCode(object):
 
     def __init__(self, argcount, nlocals, stacksize, flags,
                  code, consts, names, varnames, filename,
-                 name, firstlineno, lnotab, freevars):
+                 name, firstlineno, freevars,
+                 instructions=None, exception_entries=()):
         """Initialize a new code object"""
         assert nlocals >= 0
         self.co_argcount = argcount
@@ -60,13 +102,18 @@ class HostCode(object):
         self.co_filename = filename
         self.co_name = name
         self.co_firstlineno = firstlineno
-        self.co_lnotab = lnotab
+        self.instructions = instructions
+        self.exception_entries = exception_entries
         self.signature = cpython_code_signature(self)
 
     @classmethod
     def _from_code(cls, code):
         """Initialize the code object from a real (CPython) one.
         """
+        if HAS_GET_INSTRUCTIONS:
+            instructions, exception_entries = decode_instructions(code)
+        else:
+            instructions, exception_entries = None, ()
         return cls(code.co_argcount,
                    code.co_nlocals,
                    code.co_stacksize,
@@ -78,8 +125,9 @@ class HostCode(object):
                    code.co_filename,
                    code.co_name,
                    code.co_firstlineno,
-                   code.co_lnotab,
-                   list(code.co_freevars))
+                   list(code.co_freevars),
+                   instructions,
+                   exception_entries)
 
     @property
     def formalargcount(self):
@@ -91,8 +139,15 @@ class HostCode(object):
         """
         Decode the instruction starting at position ``offset``.
 
-        Returns (next_offset, opname, oparg).
+        Returns (next_offset, opname, oparg).  The oparg of a jump is
+        the absolute offset of its target.
         """
+        if self.instructions is not None:
+            try:
+                return self.instructions[offset]
+            except KeyError:
+                raise BytecodeCorruption("no instruction at offset %d" %
+                                         (offset,))
         co_code = self.co_code
         opnum = ord(co_code[offset])
         next_offset = offset + 1
