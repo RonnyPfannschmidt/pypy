@@ -1081,6 +1081,16 @@ class TestFlowObjSpace(Base):
             return s[-3:]
         check(f3, 'llo')
 
+    def test_is_none_branches(self):
+        def f(x, y):
+            if x is None:
+                return 1
+            if y is not None:
+                return 2
+            return 3
+        graph = self.codetest(f)
+        assert self.all_operations(graph)['is_'] == 2
+
     def test_slice_operations(self):
         def f(lst, i, j, x):
             lst[1:] = x
