@@ -348,8 +348,16 @@ def _fuse_star_call(instrs, i, jump_targets):
                 instrs[j].replace('NOP')
     call.replace('CALL_FUNCTION_EX', (n_positional, n_keywords, has_kwslot))
 
+def _fuse_conversion(instrs, i, jump_targets):
+    # 3.13+: CONVERT_VALUE already makes the string that FORMAT_SIMPLE
+    # formats
+    if (instrs[i].is_host('CONVERT_VALUE') and i + 1 < len(instrs) and
+            instrs[i + 1].is_host('FORMAT_SIMPLE') and
+            instrs[i + 1].offset not in jump_targets):
+        instrs[i + 1].replace('NOP')
+
 _FUSING_PASSES = [_fuse_slice, _fuse_constant_list, _fuse_keyword_names,
-                  _fuse_star_call]
+                  _fuse_star_call, _fuse_conversion]
 
 
 def decode_instructions(code):
